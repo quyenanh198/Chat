@@ -11,9 +11,9 @@ function extractSessionCookie(response) {
   return sessionCookie ? sessionCookie.split(';')[0] : null;
 }
 
-function buildTestApp() {
+function buildTestApp(envOverrides = {}) {
   const { db, mediaDir } = makeTestDb();
-  const config = loadConfig({ SESSION_SECRET: 'test-secret' });
+  const config = loadConfig({ SESSION_SECRET: 'test-secret', ...envOverrides });
   return buildApp({ config, db, mediaDir });
 }
 
@@ -110,6 +110,15 @@ describe('POST /api/stories', () => {
     const res = await postStory(app, '', { buffer: FAKE_PNG });
 
     expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects an upload over config.maxUploadBytes with fastify 413', async () => {
+    const app = buildTestApp({ MAX_UPLOAD_MB: '0.001' }); // ~1048 bytes cap
+    const { alice } = await setupUsers(app, 0);
+
+    const res = await postStory(app, alice.cookie, { buffer: Buffer.alloc(10_000, 1) });
+
+    expect(res.statusCode).toBe(413);
   });
 });
 

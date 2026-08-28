@@ -120,44 +120,47 @@ export async function registerMediaRoutes(app) {
     }
 
     const isSender = message.sender_id === request.user.id;
-    if (!isSender && message.media_mode === 'once') {
-      const alreadyViewed = db
-        .prepare('SELECT 1 FROM media_views WHERE message_id = ? AND user_id = ?')
-        .get(messageId, request.user.id);
-      if (alreadyViewed) {
+
+    // Record the view (idempotent — INSERT OR IGNORE — so a 24h recipient's
+    // repeat views don't error) BEFORE reading the file. For 'once' mode
+    // this insert-and-check-changes is the single atomic gate: two
+    // concurrent/sequential requests from the same recipient can no longer
+    // race between a separate "already viewed?" SELECT and the INSERT (the
+    // previous shape had that gap spanning an `await readFile`, which meant
+    // the same recipient could win the race and get the file twice). Only
+    // the recipient whose INSERT actually wrote the row (changes === 1)
+    // proceeds; everyone else — including a genuine second request — gets
+    // rejected here, before ever touching the file.
+    if (!isSender) {
+      const insertResult = db
+        .prepare('INSERT OR IGNORE INTO media_views (message_id, user_id, viewed_at) VALUES (?, ?, ?)')
+        .run(messageId, request.user.id, now);
+      if (message.media_mode === 'once' && insertResult.changes === 0) {
         return reply.code(403).send({ error: 'already_viewed' });
       }
     }
 
-    // Read the file into memory BEFORE any DB mutation / possible deletion
-    // below, so the bytes we send back are safe even if this call turns out
-    // to be the one that triggers the unlink.
+    // Read the file into memory AFTER the view is durably recorded (for
+    // 'once') but BEFORE any deletion below, so the bytes we send back are
+    // safe even if this call turns out to be the one that triggers the
+    // unlink.
     const buffer = await readFile(message.media_path);
 
-    if (!isSender) {
-      // Record the view first, then (for 'once') check whether every
-      // recipient has now viewed it — the exact order the spec calls for:
-      // "record media_views THEN stream".
-      db.prepare(
-        'INSERT OR IGNORE INTO media_views (message_id, user_id, viewed_at) VALUES (?, ?, ?)',
-      ).run(messageId, request.user.id, now);
+    if (!isSender && message.media_mode === 'once') {
+      const recipientIds = getParticipantIds(db, message.conversation_id).filter(
+        (id) => id !== message.sender_id,
+      );
+      const viewedCount = db
+        .prepare('SELECT COUNT(DISTINCT user_id) AS c FROM media_views WHERE message_id = ?')
+        .get(messageId).c;
 
-      if (message.media_mode === 'once') {
-        const recipientIds = getParticipantIds(db, message.conversation_id).filter(
-          (id) => id !== message.sender_id,
-        );
-        const viewedCount = db
-          .prepare('SELECT COUNT(DISTINCT user_id) AS c FROM media_views WHERE message_id = ?')
-          .get(messageId).c;
-
-        if (recipientIds.length > 0 && viewedCount >= recipientIds.length) {
-          const deleteTx = db.transaction(() => {
-            db.prepare('DELETE FROM media_views WHERE message_id = ?').run(messageId);
-            db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
-          });
-          deleteTx();
-          await unlink(message.media_path).catch(() => {});
-        }
+      if (recipientIds.length > 0 && viewedCount >= recipientIds.length) {
+        const deleteTx = db.transaction(() => {
+          db.prepare('DELETE FROM media_views WHERE message_id = ?').run(messageId);
+          db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
+        });
+        deleteTx();
+        await unlink(message.media_path).catch(() => {});
       }
     }
 

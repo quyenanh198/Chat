@@ -277,6 +277,65 @@ describe('GET /api/media/:messageId — mode once', () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it('regression: keeps enforcing the media_mode recorded at send time even after the sender later switches their setting', async () => {
+    const app = buildTestApp();
+    // A group of 2 recipients so bob's view alone doesn't trigger the
+    // "everyone viewed" deletion — otherwise his 2nd request would 404
+    // (message gone) rather than exercise the already_viewed 403 path.
+    const { alice, others } = await setupUsers(app, 2);
+    const [bob, carol] = others;
+    const conv = (
+      await createConversation(app, alice.cookie, { user_ids: [bob.id, carol.id], name: 'Fam' })
+    ).json().conversation;
+
+    // alice is still on the default 'once' setting when she sends this one.
+    const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
+    const messageId = uploadRes.json().id;
+    expect(uploadRes.json().media_mode).toBe('once');
+
+    // She flips her setting to '24h' AFTER sending — the already-sent
+    // message must keep enforcing the mode it was sent with, not her
+    // current setting.
+    const settingsRes = await patchSettings(app, alice.cookie, '24h');
+    expect(settingsRes.statusCode).toBe(200);
+
+    const first = await getMedia(app, bob.cookie, messageId);
+    expect(first.statusCode).toBe(200);
+
+    const second = await getMedia(app, bob.cookie, messageId);
+    expect(second.statusCode).toBe(403);
+    expect(second.json().error).toBe('already_viewed');
+  });
+
+  it('regression: concurrent double-view from the same once-mode recipient succeeds exactly once (no TOCTOU)', async () => {
+    const app = buildTestApp();
+    const { alice, others } = await setupUsers(app, 1);
+    const [bob] = others;
+    const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
+    const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
+    const messageId = uploadRes.json().id;
+
+    // Two requests from bob "at once": the view-once gate must be an atomic
+    // INSERT-and-check, not a separate SELECT-then-INSERT straddling the
+    // `await readFile` — otherwise both could pass the check before either
+    // records a view and bob gets the file twice.
+    const [first, second] = await Promise.all([
+      getMedia(app, bob.cookie, messageId),
+      getMedia(app, bob.cookie, messageId),
+    ]);
+
+    const statuses = [first.statusCode, second.statusCode].sort((a, b) => a - b);
+    expect(statuses).toEqual([200, 403]);
+    const winner = first.statusCode === 200 ? first : second;
+    expect(winner.rawPayload.equals(FAKE_PNG)).toBe(true);
+
+    // bob was the only recipient, so his one legitimate view already
+    // deleted the message + its media_views rows.
+    expect(app.db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId)).toBeUndefined();
+    const viewsLeft = app.db.prepare('SELECT COUNT(*) AS c FROM media_views WHERE message_id = ?').get(messageId).c;
+    expect(viewsLeft).toBe(0);
+  });
 });
 
 describe('GET /api/media/:messageId — mode 24h', () => {
