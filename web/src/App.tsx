@@ -3,14 +3,16 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Home from './pages/Home';
+import Chat from './pages/Chat';
+import Story from './pages/Story';
+import Settings from './pages/Settings';
 
 function LoadingScreen() {
   return <div className="app-loading">Loading…</div>;
 }
 
 // Guards a route behind an active session, redirecting to /login otherwise.
-// Task 7 wires up the real /, /chat/:id, /story/:userId and /settings
-// screens; this file's job is the shell + the guard.
 function RequireAuth({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
@@ -24,28 +26,6 @@ function RedirectIfAuthed({ children }: { children: ReactElement }) {
   if (loading) return <LoadingScreen />;
   if (user) return <Navigate to="/" replace />;
   return children;
-}
-
-// Placeholder for the chat list + story ring (Task 7).
-function HomePlaceholder() {
-  const { user } = useAuth();
-  return (
-    <div className="placeholder-page">
-      <h1>Lazybutts</h1>
-      <p>Signed in as {user?.username}. The chat list arrives in Task 7.</p>
-    </div>
-  );
-}
-
-// Placeholder for the media_mode toggle / logout / admin invite screen
-// (Task 7).
-function SettingsPlaceholder() {
-  return (
-    <div className="placeholder-page">
-      <h1>Settings</h1>
-      <p>Settings arrive in Task 7.</p>
-    </div>
-  );
 }
 
 export default function App() {
@@ -73,7 +53,23 @@ export default function App() {
             path="/"
             element={
               <RequireAuth>
-                <HomePlaceholder />
+                <Home />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/chat/:id"
+            element={
+              <RequireAuth>
+                <Chat />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/story/:userId"
+            element={
+              <RequireAuth>
+                <Story />
               </RequireAuth>
             }
           />
@@ -81,7 +77,7 @@ export default function App() {
             path="/settings"
             element={
               <RequireAuth>
-                <SettingsPlaceholder />
+                <Settings />
               </RequireAuth>
             }
           />
