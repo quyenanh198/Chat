@@ -9,7 +9,7 @@ Lazybutts is a self-hosted, ephemeral chat PWA (Snapchat-style disappearing mess
 - **Self-destructing media.** Photos/videos follow the sender's `media_mode` setting at send time:
   - `once` (default) — each recipient can open it exactly once (a second attempt gets `403`); the file and message are deleted once every recipient has viewed it, or after 24h, whichever comes first.
   - `24h` — viewable as many times as you like for 24h, then it's gone.
-  - The sender can always re-view their own media until it expires, regardless of mode.
+  - The sender can re-view their own media as many times as they like — but only until the message itself is gone: destroyed early once every recipient has viewed it (`once` mode), or expired after 24h either way. The sender's own views are never counted towards that "every recipient has viewed it" destruction trigger.
 - **24h stories**, visible to everyone in the app, viewable repeatedly, with per-user view tracking.
 - **1-1 and group chat** over a small REST API, with live updates pushed over WebSocket and Web Push notifications for anyone without an open connection.
 - **PWA**: installable to the home screen, with a service worker for push notifications and app-shell caching.
@@ -34,6 +34,7 @@ Out of scope for this MVP: end-to-end encryption, calls, filters, reactions, typ
 | `VAPID_PUBLIC_KEY` | no | — | Web Push VAPID public key. Push is silently disabled (no-op) unless all three `VAPID_*` vars are set. |
 | `VAPID_PRIVATE_KEY` | no | — | Web Push VAPID private key. |
 | `VAPID_SUBJECT` | no | — | Contact URI for push, e.g. `mailto:you@example.com`. |
+| `BOOTSTRAP_INVITE` | no | — | When set, the very first registration (the one that becomes admin with no invite otherwise) must also supply `invite` equal to this value. Closes the window where anyone who reaches the app before the real admin registers gets to claim the admin account. Leave unset to keep the default "first register wins" behavior — see the deploy note below. |
 
 Generate a VAPID key pair with:
 
@@ -47,7 +48,7 @@ npx web-push generate-vapid-keys
 
 ```bash
 npm i
-npm test               # 104 tests, vitest
+npm test               # 130 tests, vitest
 SESSION_SECRET=devsecret DATA_DIR=/tmp/lazybutts-dev node src/server.js
 ```
 
@@ -76,7 +77,9 @@ Exits `0` only if every step passes; the server process and temp data directory 
 
 ## Production (Docker)
 
-The root `Dockerfile` is a two-stage build: it compiles the web app with Node, then copies the built assets into a second, `--omit=dev` runtime image alongside the server source. It exposes one process on port `8082` — no reverse proxy needed in front of it for routing; Fastify serves both the API and the SPA.
+> **Before you expose this to the internet:** registration is invite-only, but the very *first* account gets in with no invite at all and becomes admin — whoever registers first, wins. Either register the admin account yourself before pointing DNS/a reverse proxy at the container, or set `BOOTSTRAP_INVITE` so the first registration also has to know a shared secret (see the env table above).
+
+The root `Dockerfile` is a two-stage build: it compiles the web app with Node, then copies the built assets into a second, `--omit=dev` runtime image alongside the server source. It exposes one process on port `8082` — no reverse proxy needed in front of it for routing; Fastify serves both the API and the SPA. The runtime image runs as the non-root `node` user (not root).
 
 ```bash
 docker build -t lazybutts .
@@ -94,6 +97,8 @@ docker run -d \
 ```
 
 Mount `/data/db` and `/data/media` as persistent volumes (or bind mounts to an external drive) — that's the entire durable state of the app.
+
+Since the container runs as the non-root `node` user, that path has to be writable by it: a named Docker volume (as in the example above) is created empty and already owned by `node`, so it just works. A **bind mount to a host directory** instead keeps that directory's own ownership — either `chown` it on the host to match the `node` user/group inside the image, or run the container with `--user "$(id -u):$(id -g)"` (or another UID that already owns the directory) to override it.
 
 ## Hub integration (macmini-hub)
 
