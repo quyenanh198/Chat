@@ -10,7 +10,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "@fastify/cookie": "^11.1.2",
+    "argon2": "^0.45.1",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.12.1",
+    "jose": "^6.2.10"
   },
   "devDependencies": {
     "vitest": "^4.1.11"
