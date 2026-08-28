@@ -19,13 +19,88 @@ function isUniqueConstraintError(err) {
   return Boolean(err && typeof err.message === 'string' && /UNIQUE constraint failed/i.test(err.message));
 }
 
+const MIN_USERNAME_LENGTH = 3;
+const MAX_USERNAME_LENGTH = 32;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+const MIN_PASSWORD_LENGTH = 12;
+
+function isValidUsername(username) {
+  return (
+    typeof username === 'string' &&
+    username.length >= MIN_USERNAME_LENGTH &&
+    username.length <= MAX_USERNAME_LENGTH &&
+    USERNAME_PATTERN.test(username)
+  );
+}
+
+// Cheap, synchronous, read-only checks run BEFORE the expensive argon2 hash
+// below — a flood of registration attempts with a bogus/reused invite code
+// or an already-taken username would otherwise force the server to pay a
+// full argon2 hash (deliberately slow, that's the point of it) per attempt,
+// which is itself a cheap CPU-exhaustion DoS. Returns {status, error} to
+// reject early, or null when nothing obviously wrong was found.
+//
+// This is a fast-path rejection ONLY — it is not the authoritative gate.
+// registerTx below re-runs the equivalent checks transactionally and is
+// what actually enforces correctness under concurrent requests (see its own
+// comment); this pre-check must never be relied on for that, and skipping
+// it (e.g. if it has a stale read) only costs an extra wasted hash, not a
+// security guarantee.
+function evaluateRegistration(db, { username, invite, bootstrapInvite }) {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM users').get();
+  const isFirstUser = count === 0;
+
+  if (isFirstUser) {
+    // BOOTSTRAP_INVITE (when configured) closes the "first visitor becomes
+    // admin" window: the first registration must present it too.
+    if (bootstrapInvite && invite !== bootstrapInvite) {
+      return { status: 403, error: 'invite_required' };
+    }
+  } else {
+    if (!invite) {
+      return { status: 403, error: 'invite_required' };
+    }
+    const inviteRow = db.prepare('SELECT used_by FROM invites WHERE code = ?').get(invite);
+    if (!inviteRow || inviteRow.used_by) {
+      return { status: 403, error: 'invalid_invite' };
+    }
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  if (existing) {
+    return { status: 409, error: 'username_taken' };
+  }
+
+  return null;
+}
+
+// Login/register are the two routes actually worth brute-forcing (password
+// guessing, invite-code guessing) so they get a much stricter limit than
+// app.js's global default — see app.js's own rate-limit registration for
+// the shared keyGenerator (CF-Connecting-IP else request.ip) this inherits.
+const AUTH_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
+
 export async function registerAuthRoutes(app) {
-  // First registered user becomes admin and needs no invite; every user
+  // First registered user becomes admin and needs no invite (unless
+  // BOOTSTRAP_INVITE is configured, see evaluateRegistration); every user
   // after that must supply an unused invite code (marked used on success).
-  app.post('/auth/register', async (request, reply) => {
+  app.post('/auth/register', { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const { username, password, invite } = request.body ?? {};
     if (!username || !password) {
       return reply.code(400).send({ error: 'username_and_password_required' });
+    }
+    if (!isValidUsername(username)) {
+      return reply.code(400).send({ error: 'invalid_username' });
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({ error: 'password_too_short' });
+    }
+
+    const db = app.db;
+
+    const precheck = evaluateRegistration(db, { username, invite, bootstrapInvite: app.config.bootstrapInvite });
+    if (precheck) {
+      return reply.code(precheck.status).send({ error: precheck.error });
     }
 
     // Hash BEFORE touching the db. argon2.hash awaits onto the event loop;
@@ -37,7 +112,6 @@ export async function registerAuthRoutes(app) {
     // in the middle, so no other request's handler can interleave with it.
     const passHash = await hashPassword(password);
 
-    const db = app.db;
     const now = Date.now();
 
     const registerTx = db.transaction(() => {
@@ -107,7 +181,7 @@ export async function registerAuthRoutes(app) {
     return reply.code(201).send({ user: serializeUser(result.user) });
   });
 
-  app.post('/auth/login', async (request, reply) => {
+  app.post('/auth/login', { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const { username, password } = request.body ?? {};
     if (!username || !password) {
       return reply.code(400).send({ error: 'username_and_password_required' });

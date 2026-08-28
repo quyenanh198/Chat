@@ -22,5 +22,13 @@ export function loadConfig(env = process.env) {
       ? { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY, subject: VAPID_SUBJECT }
       : null;
 
-  return { port, dataDir, sessionSecret, vapid, maxUploadBytes };
+  // Optional first-admin gate: when set, registering the very first user
+  // (the one who becomes admin with no invite otherwise) additionally
+  // requires `invite` to equal this value. Closes the window where anyone
+  // who reaches the app before the real admin does gets to register the
+  // admin account. Leave unset to keep the original "first register wins"
+  // behavior (fine when the admin registers before exposing the app).
+  const bootstrapInvite = env.BOOTSTRAP_INVITE || null;
+
+  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite };
 }
