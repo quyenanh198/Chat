@@ -97,6 +97,32 @@ describe('POST /api/auth/register', () => {
 
     expect(res.statusCode).toBe(403);
   });
+
+  // The register handler consumes an invite with a conditional
+  // `UPDATE invites SET used_by = ? WHERE code = ? AND used_by IS NULL`
+  // inside a single synchronous db.transaction() — that's what actually
+  // enforces single-use, independent of the earlier SELECT-based check.
+  // The interleaved-request race itself can't be reproduced in a
+  // single-threaded test process (there's no await between the read and
+  // the write for it to land in), so this exercises the guarantee the way
+  // it's observable: the UPDATE really flips used_by, and a second,
+  // sequential attempt with the same code is rejected because of it.
+  it('marks an invite consumed via the conditional UPDATE so it cannot be replayed', async () => {
+    const app = buildTestApp();
+    const adminCookie = await registerAdminAndGetCookie(app);
+    const code = await createInvite(app, adminCookie);
+
+    const first = await registerUser(app, { username: 'bob', password: 'password123', invite: code });
+    expect(first.statusCode).toBe(201);
+    const bobId = first.json().user.id;
+
+    const inviteRow = app.db.prepare('SELECT used_by FROM invites WHERE code = ?').get(code);
+    expect(inviteRow.used_by).toBe(bobId);
+
+    const second = await registerUser(app, { username: 'carol', password: 'password123', invite: code });
+    expect(second.statusCode).toBe(403);
+    expect(second.json().error).toBe('invalid_invite');
+  });
 });
 
 describe('POST /api/auth/login', () => {

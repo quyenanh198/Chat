@@ -40,6 +40,7 @@ async function verifySession(token, sessionSecret) {
 export function setSessionCookie(reply, token) {
   reply.setCookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
+    secure: true,
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
