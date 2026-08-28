@@ -128,12 +128,44 @@ describe('createPush', () => {
 
     expect(sendSpy).not.toHaveBeenCalled();
   });
+
+  // I5: a subscription whose endpoint accepts the connection and simply
+  // never responds must not hang sendPush (and therefore whatever caller —
+  // notifyNewMessage's request handler — is waiting on it) forever. The 5th
+  // constructor arg overrides the default 5s timeout down to a few ms so
+  // this doesn't have to actually wait 5 seconds.
+  it('does not hang forever when sendNotification never resolves: races against its timeout', async () => {
+    const { db } = makeTestDb();
+    const endpoint = insertSub(db, { userId: 1 });
+    vi.spyOn(webpush, 'sendNotification').mockImplementation(() => new Promise(() => {})); // never settles
+
+    const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() }, 20);
+
+    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+    // A timeout isn't proof the endpoint is dead (unlike 404/410) — the row
+    // is kept, same as any other transient failure.
+    expect(db.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get(endpoint)).toBeTruthy();
+  });
+
+  it('lets one subscription time out without blocking delivery to a faster one', async () => {
+    const { db } = makeTestDb();
+    insertSub(db, { userId: 1, endpoint: 'https://push.example/slow' });
+    insertSub(db, { userId: 1, endpoint: 'https://push.example/fast' });
+    vi.spyOn(webpush, 'sendNotification').mockImplementation((sub) => {
+      if (sub.endpoint.endsWith('/slow')) return new Promise(() => {}); // never settles
+      return Promise.resolve({});
+    });
+
+    const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() }, 20);
+
+    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+  });
 });
 
 function buildTestApp(envOverrides = {}) {
   const { db, mediaDir } = makeTestDb();
   const config = loadConfig({ SESSION_SECRET: 'test-secret', ...envOverrides });
-  return buildApp({ config, db, mediaDir });
+  return buildApp({ config, db, mediaDir, logger: false });
 }
 
 function extractSessionCookie(response) {
@@ -148,7 +180,7 @@ async function registerAndLogin(app) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/register',
-    payload: { username: 'alice', password: 'password123' },
+    payload: { username: 'alice', password: 'password1234' },
   });
   return { id: res.json().user.id, cookie: extractSessionCookie(res) };
 }

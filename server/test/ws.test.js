@@ -12,10 +12,10 @@ function extractSessionCookie(response) {
   return sessionCookie ? sessionCookie.split(';')[0] : null;
 }
 
-async function buildRunningApp(envOverrides = {}) {
+async function buildRunningApp(envOverrides = {}, appOverrides = {}) {
   const { db, mediaDir } = makeTestDb();
   const config = loadConfig({ SESSION_SECRET: 'test-secret', ...envOverrides });
-  const app = buildApp({ config, db, mediaDir });
+  const app = buildApp({ config, db, mediaDir, logger: false, ...appOverrides });
   await app.listen({ port: 0, host: '127.0.0.1' });
   return app;
 }
@@ -36,13 +36,13 @@ async function createInvite(app, adminCookie) {
 
 async function setupUsers(app, n) {
   const names = ['bob', 'carol', 'dave'];
-  const aliceRes = await registerUser(app, { username: 'alice', password: 'password123' });
+  const aliceRes = await registerUser(app, { username: 'alice', password: 'password1234' });
   const alice = { id: aliceRes.json().user.id, cookie: extractSessionCookie(aliceRes) };
 
   const others = [];
   for (let i = 0; i < n; i++) {
     const code = await createInvite(app, alice.cookie);
-    const res = await registerUser(app, { username: names[i], password: 'password123', invite: code });
+    const res = await registerUser(app, { username: names[i], password: 'password1234', invite: code });
     others.push({ id: res.json().user.id, cookie: extractSessionCookie(res) });
   }
 
@@ -51,9 +51,14 @@ async function setupUsers(app, n) {
 
 // Connects a real ws client to the running app's /ws route, resolving with
 // the open socket or rejecting with the HTTP upgrade's status code.
-function connectWs(app, cookie) {
+// `wsOptions` is merged into the underlying `ws` client's constructor
+// options — e.g. `{ headers: { Origin: '...' } }` for the origin-check
+// tests, or `{ autoPong: false }` for the heartbeat tests (so the client
+// stops answering the server's pings, simulating a half-open connection).
+function connectWs(app, cookie, wsOptions = {}) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(wsUrl(app), { headers: cookie ? { cookie } : {} });
+    const headers = { ...(cookie ? { cookie } : {}), ...(wsOptions.headers ?? {}) };
+    const socket = new WebSocket(wsUrl(app), { ...wsOptions, headers });
     socket.once('open', () => resolve(socket));
     socket.once('unexpected-response', (request, response) => {
       reject(Object.assign(new Error('unexpected response'), { statusCode: response.statusCode }));
@@ -93,14 +98,14 @@ afterEach(async () => {
   runningApps = [];
 });
 
-async function trackedRunningApp(envOverrides) {
-  const app = await buildRunningApp(envOverrides);
+async function trackedRunningApp(envOverrides, appOverrides) {
+  const app = await buildRunningApp(envOverrides, appOverrides);
   runningApps.push(app);
   return app;
 }
 
-async function trackedConnect(app, cookie) {
-  const socket = await connectWs(app, cookie);
+async function trackedConnect(app, cookie, wsOptions) {
+  const socket = await connectWs(app, cookie, wsOptions);
   openSockets.push(socket);
   return socket;
 }
@@ -267,5 +272,76 @@ describe('GET /ws', () => {
 
     await sleep(50);
     expect(bobGotEvent).toBe(false);
+  });
+});
+
+// I2: a cross-site page trying to ride a victim's session cookie into /ws
+// sends its own Origin header, which won't match our Host. A non-browser
+// client (curl, a mobile app, or — as it happens — every other test in this
+// file's own `ws` client) sends no Origin at all and must still get in.
+describe('GET /ws — origin check', () => {
+  it('rejects the upgrade with 403 when Origin names a different host', async () => {
+    const app = await trackedRunningApp();
+    const { alice } = await setupUsers(app, 0);
+
+    await expect(
+      connectWs(app, alice.cookie, { headers: { Origin: 'https://evil.example' } }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('accepts the upgrade when Origin matches the request Host (same-origin)', async () => {
+    const app = await trackedRunningApp();
+    const { alice } = await setupUsers(app, 0);
+    const { port } = app.server.address();
+
+    const socket = await trackedConnect(app, alice.cookie, { headers: { Origin: `http://127.0.0.1:${port}` } });
+
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('accepts the upgrade when Origin is absent entirely (non-browser client)', async () => {
+    const app = await trackedRunningApp();
+    const { alice } = await setupUsers(app, 0);
+
+    const socket = await trackedConnect(app, alice.cookie);
+
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+  });
+});
+
+// M3: the server pings every open connection on an interval and terminates
+// one that stops answering. Both tests override the interval down to a few
+// milliseconds (via buildApp's wsHeartbeatIntervalMs/wsMaxMissedPongs test
+// hooks — see ws.js) so this doesn't have to wait out the real 30s cadence.
+describe('GET /ws — heartbeat', () => {
+  it('terminates a socket that stops answering pings and cleans up the connection registry', async () => {
+    const app = await trackedRunningApp({}, { wsHeartbeatIntervalMs: 20, wsMaxMissedPongs: 2 });
+    const { others } = await setupUsers(app, 1);
+    const [bob] = others;
+
+    // autoPong: false — this client will never answer the server's pings,
+    // simulating a half-open connection (e.g. a phone that dropped off wifi
+    // without a clean TCP close).
+    const bobSocket = await trackedConnect(app, bob.cookie, { autoPong: false });
+    const closed = new Promise((resolve) => bobSocket.once('close', resolve));
+
+    await closed;
+
+    // Registry cleanup actually ran: push.js's hasOpenSocket must stop
+    // reporting bob as reachable once his dead connection is gone.
+    expect(app.hasOpenSocket(bob.id)).toBe(false);
+  });
+
+  it('leaves a socket that keeps answering pings (the ws client auto-pongs by default) open', async () => {
+    const app = await trackedRunningApp({}, { wsHeartbeatIntervalMs: 20, wsMaxMissedPongs: 2 });
+    const { others } = await setupUsers(app, 1);
+    const [bob] = others;
+
+    const bobSocket = await trackedConnect(app, bob.cookie);
+
+    await sleep(150); // several heartbeat ticks' worth
+
+    expect(bobSocket.readyState).toBe(WebSocket.OPEN);
+    expect(app.hasOpenSocket(bob.id)).toBe(true);
   });
 });

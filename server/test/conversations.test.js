@@ -1,9 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import webpush from 'web-push';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { makeTestDb } from './helpers.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // Pulls the `lb_session=...` cookie (name=value only, no attributes) out of a
 // fastify.inject() response so it can be replayed on the next request.
@@ -15,10 +21,10 @@ function extractSessionCookie(response) {
   return sessionCookie ? sessionCookie.split(';')[0] : null;
 }
 
-function buildTestApp() {
+function buildTestApp(envOverrides = {}) {
   const { db, mediaDir } = makeTestDb();
-  const config = loadConfig({ SESSION_SECRET: 'test-secret' });
-  return buildApp({ config, db, mediaDir });
+  const config = loadConfig({ SESSION_SECRET: 'test-secret', ...envOverrides });
+  return buildApp({ config, db, mediaDir, logger: false });
 }
 
 function registerUser(app, body) {
@@ -35,13 +41,13 @@ async function createInvite(app, adminCookie) {
 // code. Returns { alice: {id, cookie}, others: [{id, cookie}, ...] }.
 async function setupUsers(app, n) {
   const names = ['bob', 'carol', 'dave', 'erin'];
-  const aliceRes = await registerUser(app, { username: 'alice', password: 'password123' });
+  const aliceRes = await registerUser(app, { username: 'alice', password: 'password1234' });
   const alice = { id: aliceRes.json().user.id, cookie: extractSessionCookie(aliceRes) };
 
   const others = [];
   for (let i = 0; i < n; i++) {
     const code = await createInvite(app, alice.cookie);
-    const res = await registerUser(app, { username: names[i], password: 'password123', invite: code });
+    const res = await registerUser(app, { username: names[i], password: 'password1234', invite: code });
     others.push({ id: res.json().user.id, cookie: extractSessionCookie(res) });
   }
 
@@ -273,6 +279,50 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].convId).toBe(conversationId);
     expect(calls[0].message.body).toBe('hi');
+  });
+
+  // I5: notifyNewMessage's web-push fan-out is a real network call per
+  // recipient (routes/conversations.js calls it without awaiting it). The
+  // sender's reply must come back immediately even while that fan-out is
+  // still in flight against a slow (or hung) push endpoint.
+  it('replies to the sender without waiting for a slow web-push send to the recipient to finish', async () => {
+    const vapidKeys = webpush.generateVAPIDKeys();
+    const app = buildTestApp({
+      VAPID_PUBLIC_KEY: vapidKeys.publicKey,
+      VAPID_PRIVATE_KEY: vapidKeys.privateKey,
+      VAPID_SUBJECT: 'mailto:test@example.com',
+    });
+    const { alice, others } = await setupUsers(app, 1);
+    const [bob] = others;
+    const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
+
+    // Bob has no open WS socket in this test (fastify.inject doesn't open
+    // one), so sendPush will actually try to push to this subscription.
+    await app.inject({
+      method: 'POST',
+      url: '/api/push/subscribe',
+      headers: { cookie: bob.cookie },
+      payload: { subscription: { endpoint: 'https://push.example/bob', keys: { p256dh: 'p-key', auth: 'a-key' } } },
+    });
+
+    let resolveSend;
+    const sendGate = new Promise((resolve) => {
+      resolveSend = resolve;
+    });
+    const sendSpy = vi.spyOn(webpush, 'sendNotification').mockImplementation(() => sendGate);
+
+    const start = Date.now();
+    const res = await sendText(app, alice.cookie, conv.id, 'hi bob');
+    const elapsed = Date.now() - start;
+
+    expect(res.statusCode).toBe(201);
+    // The push send is still pending (sendGate hasn't resolved) — the reply
+    // above only came back this fast because it didn't wait on it.
+    expect(elapsed).toBeLessThan(500);
+    expect(sendSpy).toHaveBeenCalled();
+
+    resolveSend({}); // let the background push settle before the test ends
+    await sleep(0);
   });
 
   it('returns 403 for a non-member', async () => {

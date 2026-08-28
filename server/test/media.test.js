@@ -17,7 +17,7 @@ function extractSessionCookie(response) {
 function buildTestApp(envOverrides = {}) {
   const { db, mediaDir } = makeTestDb();
   const config = loadConfig({ SESSION_SECRET: 'test-secret', ...envOverrides });
-  return buildApp({ config, db, mediaDir });
+  return buildApp({ config, db, mediaDir, logger: false });
 }
 
 function registerUser(app, body) {
@@ -34,13 +34,13 @@ async function createInvite(app, adminCookie) {
 // code. Returns { alice: {id, cookie}, others: [{id, cookie}, ...] }.
 async function setupUsers(app, n) {
   const names = ['bob', 'carol', 'dave', 'erin'];
-  const aliceRes = await registerUser(app, { username: 'alice', password: 'password123' });
+  const aliceRes = await registerUser(app, { username: 'alice', password: 'password1234' });
   const alice = { id: aliceRes.json().user.id, cookie: extractSessionCookie(aliceRes) };
 
   const others = [];
   for (let i = 0; i < n; i++) {
     const code = await createInvite(app, alice.cookie);
-    const res = await registerUser(app, { username: names[i], password: 'password123', invite: code });
+    const res = await registerUser(app, { username: names[i], password: 'password1234', invite: code });
     others.push({ id: res.json().user.id, cookie: extractSessionCookie(res) });
   }
 
