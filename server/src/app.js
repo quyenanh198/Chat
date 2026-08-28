@@ -1,6 +1,10 @@
+import { createReadStream, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import staticPlugin from '@fastify/static';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerUsersRoutes } from './routes/users.js';
@@ -11,6 +15,13 @@ import { registerStoryRoutes } from './routes/stories.js';
 import { registerPushRoutes } from './routes/push.js';
 import { createWs } from './ws.js';
 import { createPush } from './push.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Default location of the built web app relative to this file
+// (server/src/app.js -> ../../web/dist), used whenever buildApp() isn't
+// given an explicit webDistDir. Overridable mainly for tests.
+const DEFAULT_WEB_DIST_DIR = resolve(__dirname, '../../web/dist');
 
 // Truncates a text message body to a short push-notification excerpt.
 function excerptBody(body, maxLen = 80) {
@@ -28,7 +39,7 @@ function pushBodyFor(message) {
 
 // Builds a fully configured Fastify instance. Does NOT call listen() — the
 // caller (server entrypoint or a test's app.inject()) owns that.
-export function buildApp({ config, db, mediaDir }) {
+export function buildApp({ config, db, mediaDir, webDistDir = DEFAULT_WEB_DIST_DIR }) {
   const app = Fastify({ logger: false });
 
   app.decorate('config', config);
@@ -111,6 +122,29 @@ export function buildApp({ config, db, mediaDir }) {
     },
     { prefix: '/api' },
   );
+
+  // Serves the built web app (web/dist) at "/" and falls back to
+  // index.html for any other unmatched GET (client-side router paths like
+  // /chat/3 or /settings) so a hard refresh/deep link works. Only wired up
+  // when the dist dir actually exists — e.g. it's absent in most test runs,
+  // and this keeps that a silent no-op rather than a startup failure.
+  const indexHtmlPath = join(webDistDir, 'index.html');
+  if (existsSync(indexHtmlPath)) {
+    app.register(staticPlugin, { root: webDistDir });
+
+    app.setNotFoundHandler((request, reply) => {
+      // API and WS 404s must stay JSON — only fall back to the SPA shell for
+      // plain-browser GET navigation. Fastify's default 404 handler (JSON,
+      // matching statusCode/error/message) covers everything else: wrong
+      // method on a real route, unknown /api/* route, etc.
+      const isSpaNavigation =
+        request.raw.method === 'GET' && !request.url.startsWith('/api') && request.url !== '/ws';
+      if (isSpaNavigation) {
+        return reply.type('text/html').send(createReadStream(indexHtmlPath));
+      }
+      reply.code(404).send({ error: 'not_found' });
+    });
+  }
 
   return app;
 }
