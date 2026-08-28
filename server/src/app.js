@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import staticPlugin from '@fastify/static';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
@@ -37,10 +38,44 @@ function pushBodyFor(message) {
   return excerptBody(message.body);
 }
 
+// Global default: generous enough that no legitimate user of this small
+// self-hosted app ever notices it, but it caps how much CPU/IO an anonymous
+// client can make any single route do per minute. Auth routes get their own
+// much stricter per-route override (see routes/auth.js) since login/register
+// are the routes worth brute-forcing.
+const DEFAULT_RATE_LIMIT_MAX = 300;
+const DEFAULT_RATE_LIMIT_WINDOW = '1 minute';
+
+// Rate-limit key: prefer Cloudflare's CF-Connecting-IP (set by the edge this
+// app is deployed behind per the README's hub-integration section — the
+// *actual* client IP, since everything else arrives from Cloudflare's own
+// proxy IP) and fall back to Fastify's own request.ip (accurate for a direct
+// connection, and — with trustProxy enabled below — for any other
+// X-Forwarded-For-style proxy in front of it too).
+function rateLimitKey(request) {
+  return request.headers['cf-connecting-ip'] || request.ip;
+}
+
 // Builds a fully configured Fastify instance. Does NOT call listen() — the
 // caller (server entrypoint or a test's app.inject()) owns that.
-export function buildApp({ config, db, mediaDir, webDistDir = DEFAULT_WEB_DIST_DIR }) {
-  const app = Fastify({ logger: false });
+//
+// `logger` defaults to true (Fastify's own request/response/error logging)
+// for the real server; tests pass `logger: false` to keep test output
+// clean. `trustProxy: true` makes Fastify honor X-Forwarded-For (and
+// populate request.ip from it) since this app is always meant to run behind
+// a reverse proxy/edge (see README) — required for both the rate limiter's
+// and any future IP-based logic's request.ip to reflect the real client
+// rather than the proxy's own address.
+export function buildApp({
+  config,
+  db,
+  mediaDir,
+  webDistDir = DEFAULT_WEB_DIST_DIR,
+  logger = true,
+  wsHeartbeatIntervalMs,
+  wsMaxMissedPongs,
+}) {
+  const app = Fastify({ logger, trustProxy: true });
 
   app.decorate('config', config);
   app.decorate('db', db);
@@ -50,7 +85,7 @@ export function buildApp({ config, db, mediaDir, webDistDir = DEFAULT_WEB_DIST_D
   // ws.js/push.js are factories (not module-level singletons) so every
   // buildApp() call — including each test's own app — gets its own
   // connection registry instead of sharing process-wide state.
-  const ws = createWs();
+  const ws = createWs({ heartbeatIntervalMs: wsHeartbeatIntervalMs, maxMissedPongs: wsMaxMissedPongs });
   app.decorate('pushToUsers', ws.pushToUsers);
   app.decorate('hasOpenSocket', ws.hasOpenSocket);
 
@@ -93,6 +128,29 @@ export function buildApp({ config, db, mediaDir, webDistDir = DEFAULT_WEB_DIST_D
   app.decorate('notifyNewConversation', (conversation, creatorId) => {
     const otherIds = conversation.participants.filter((p) => p.id !== creatorId).map((p) => p.id);
     app.pushToUsers(otherIds, { type: 'conversation:new', conversation });
+  });
+
+  // Security headers on every response (API, WS upgrade errors, and the
+  // static SPA alike) — onSend runs for every reply regardless of which
+  // handler/plugin produced it, including Fastify's own error/404 replies.
+  // nosniff blocks a browser from MIME-sniffing an uploaded media file (see
+  // media.js/routes/media.js) into something it treats as executable
+  // (HTML/JS); no-referrer keeps chat URLs (which embed conversation/message
+  // ids) out of any Referer header sent to a third party; frame-ancestors
+  // 'none' stops this app from being framed by another site (clickjacking).
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+    return payload;
+  });
+
+  // Global default (see DEFAULT_RATE_LIMIT_MAX's comment); /auth/login and
+  // /auth/register override this with a much stricter limit (routes/auth.js).
+  app.register(rateLimit, {
+    max: DEFAULT_RATE_LIMIT_MAX,
+    timeWindow: DEFAULT_RATE_LIMIT_WINDOW,
+    keyGenerator: rateLimitKey,
   });
 
   app.register(cookie);
