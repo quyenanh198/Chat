@@ -1,4 +1,5 @@
 import { requireUser } from '../auth.js';
+import { mediaFlags } from './media.js';
 
 const TEXT_TTL_MS = 24 * 60 * 60 * 1000; // text messages expire 24h after send
 
@@ -164,14 +165,21 @@ export async function registerConversationRoutes(app) {
     const now = Date.now();
     const messages = db
       .prepare(
-        `SELECT id, conversation_id, sender_id, kind, body, created_at, expires_at
+        `SELECT id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at
          FROM messages
          WHERE conversation_id = ? AND expires_at > ?
          ORDER BY created_at ASC, id ASC`,
       )
       .all(conversationId, now);
 
-    return reply.send(messages);
+    // Media messages (kind image/video) carry viewable/viewed for the
+    // requesting user, computed from the self-destruct rules; text messages
+    // are left untouched.
+    const withFlags = messages.map((message) =>
+      message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, request.user.id) },
+    );
+
+    return reply.send(withFlags);
   });
 
   app.post('/conversations/:id/messages', { preHandler: requireUser }, async (request, reply) => {
