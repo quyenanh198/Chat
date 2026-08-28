@@ -128,7 +128,13 @@ export async function registerConversationRoutes(app) {
 
     const conversationId = createTx();
     const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
-    return reply.code(201).send({ conversation: serializeConversation(db, conversation, now) });
+    const serialized = serializeConversation(db, conversation, now);
+
+    // Only the freshly-created path notifies — the dedupe branch above
+    // returns an existing conversation, which isn't "new" to anyone.
+    await app.notifyNewConversation(serialized, request.user.id);
+
+    return reply.code(201).send({ conversation: serialized });
   });
 
   app.get('/conversations', { preHandler: requireUser }, async (request, reply) => {

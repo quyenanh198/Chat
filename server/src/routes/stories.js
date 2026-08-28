@@ -37,6 +37,8 @@ export async function registerStoryRoutes(app) {
       .prepare('SELECT id, user_id, kind, created_at, expires_at FROM stories WHERE id = ?')
       .get(info.lastInsertRowid);
 
+    await app.notifyNewStory(request.user.id, story.id);
+
     return reply.code(201).send(story);
   });
 
