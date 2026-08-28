@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerUsersRoutes } from './routes/users.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerMediaRoutes } from './routes/media.js';
@@ -101,6 +102,7 @@ export function buildApp({ config, db, mediaDir }) {
     async (api) => {
       await registerAuthRoutes(api);
       await registerMeRoutes(api);
+      await registerUsersRoutes(api);
       await registerInviteRoutes(api);
       await registerConversationRoutes(api);
       await registerMediaRoutes(api);

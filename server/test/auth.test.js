@@ -284,3 +284,33 @@ describe('POST /api/invites', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('GET /api/users', () => {
+  it('returns 401 without a session cookie', async () => {
+    const app = buildTestApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/users' });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns all users except the requester with only id and username, ordered by username', async () => {
+    const app = buildTestApp();
+    const adminCookie = await registerAdminAndGetCookie(app);
+    const code = await createInvite(app, adminCookie);
+    const bobRes = await registerUser(app, { username: 'bob', password: 'password123', invite: code });
+    const bobCookie = extractSessionCookie(bobRes);
+
+    const res = await app.inject({ method: 'GET', url: '/api/users', headers: { cookie: bobCookie } });
+
+    expect(res.statusCode).toBe(200);
+    const users = res.json();
+    expect(users).toHaveLength(1);
+    expect(users[0]).toEqual({
+      id: expect.any(Number),
+      username: 'alice',
+    });
+    expect(users[0].pass_hash).toBeUndefined();
+    expect(users[0].media_mode).toBeUndefined();
+  });
+});
