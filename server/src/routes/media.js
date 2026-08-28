@@ -97,7 +97,10 @@ export async function registerMediaRoutes(app) {
       )
       .get(info.lastInsertRowid);
 
-    await app.notifyNewMessage(conversationId, message);
+    // Fire-and-forget — see the identical comment in routes/conversations.js.
+    app.notifyNewMessage(conversationId, message).catch((err) => {
+      request.log.error({ err }, 'notifyNewMessage failed');
+    });
 
     return reply.code(201).send(serializeMessage(message));
   });

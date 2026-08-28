@@ -1,5 +1,27 @@
 import webpush from 'web-push';
 
+// A single unreachable/slow push endpoint must never make sendPush (and
+// therefore whatever triggered it) hang indefinitely — some push services
+// have been known to accept a connection and simply never respond. 5s is
+// generous for a real push service and short enough that a request path
+// calling sendPush stays responsive.
+const DEFAULT_PUSH_TIMEOUT_MS = 5000;
+
+// Races `promise` against a timer, rejecting with a distinct error if `ms`
+// elapses first. The timer is cleared either way so a fast-resolving
+// `promise` doesn't leave a dangling handle around, and is unref()'d so an
+// in-flight one can never keep the process alive on its own.
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(Object.assign(new Error(`push timed out after ${ms}ms`), { code: 'PUSH_TIMEOUT' }));
+    }, ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Creates one push module instance bound to a single app's config/db/ws
 // registry (mirrors the createWs() factory shape — keeps state isolated
 // per buildApp() call instead of leaking across tests via module globals).
@@ -16,7 +38,7 @@ import webpush from 'web-push';
 // `hasOpenSocket(userId)` — typically ws.js's hasOpenSocket — lets sendPush
 // skip anyone already reachable live over their websocket, per spec: push
 // only goes to participants without an open connection.
-export function createPush(config, db, hasOpenSocket, logger = console) {
+export function createPush(config, db, hasOpenSocket, logger = console, pushTimeoutMs = DEFAULT_PUSH_TIMEOUT_MS) {
   const vapid = config.vapid;
 
   if (vapid) {
@@ -51,18 +73,23 @@ export function createPush(config, db, hasOpenSocket, logger = console) {
     await Promise.all(
       subs.map(async (sub) => {
         try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            body,
+          await withTimeout(
+            webpush.sendNotification(
+              { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+              body,
+            ),
+            pushTimeoutMs,
           );
         } catch (err) {
           const status = err?.statusCode;
           if (status === 404 || status === 410) {
             db.prepare('DELETE FROM push_subs WHERE id = ?').run(sub.id);
           }
-          // Any other failure (network blip, 5xx from the push service) is
-          // swallowed on purpose — a push delivery hiccup must never break
-          // the message-send request path that triggered it.
+          // Any other failure (network blip, 5xx from the push service, or
+          // our own PUSH_TIMEOUT above) is swallowed on purpose — a push
+          // delivery hiccup must never break the message-send request path
+          // that triggered it. A timeout doesn't mean the subscription is
+          // dead (unlike 404/410), so its row is kept.
         }
       }),
     );

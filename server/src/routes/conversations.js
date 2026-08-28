@@ -223,7 +223,15 @@ export async function registerConversationRoutes(app) {
       )
       .get(info.lastInsertRowid);
 
-    await app.notifyNewMessage(conversationId, message);
+    // Fire-and-forget: notifyNewMessage's WS fan-out is synchronous (already
+    // done by the time this call returns), but its web-push fan-out is a
+    // real network call per recipient (bounded by push.js's own 5s timeout,
+    // but that's still 5s the sender shouldn't have to wait on). Not
+    // awaited on purpose — the sender's request replies immediately either
+    // way; a delivery failure here is logged, never surfaced to the sender.
+    app.notifyNewMessage(conversationId, message).catch((err) => {
+      request.log.error({ err }, 'notifyNewMessage failed');
+    });
 
     return reply.code(201).send(message);
   });
