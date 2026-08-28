@@ -166,10 +166,6 @@ export function updateSettings(media_mode: User['media_mode']): Promise<{ user: 
   return api.patch('/api/me/settings', { media_mode });
 }
 
-// NOTE: GET /api/users is documented in the design spec's API section but is
-// not yet implemented server-side (no matching route in server/src/routes).
-// Wired up here for Task 7 (new-chat user picker) to build against; it will
-// 404 until the server route lands.
 export function getUsers(): Promise<Participant[]> {
   return api.get('/api/users');
 }

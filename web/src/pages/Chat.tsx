@@ -99,6 +99,19 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
 
+  // closeViewer() already revokes the blob URL on an explicit close, but
+  // navigating away (unmount) while the viewer is still open would leak it
+  // otherwise — mirrors the revoke-on-cleanup pattern in Story.tsx.
+  const viewerRef = useRef<MediaViewerState | null>(null);
+  useEffect(() => {
+    viewerRef.current = viewer;
+  }, [viewer]);
+  useEffect(() => {
+    return () => {
+      if (viewerRef.current) URL.revokeObjectURL(viewerRef.current.url);
+    };
+  }, []);
+
   async function handleSendText(event: FormEvent) {
     event.preventDefault();
     const body = text.trim();
@@ -122,7 +135,14 @@ export default function Chat() {
     setSending(true);
     try {
       const message = await sendMedia(conversationId, file);
-      setMessages((prev) => [...prev, message]);
+      // The server's POST /conversations/:id/media response never carries
+      // viewable/viewed (serializeMessage in server/src/routes/media.js
+      // omits them — those fields only exist on the GET .../messages read
+      // path, computed per-viewer). Fill them in optimistically so this
+      // bubble renders as "Tap to view" immediately instead of "Opened";
+      // the render below additionally treats the sender as always-viewable
+      // regardless of this field, as a second line of defense.
+      setMessages((prev) => [...prev, { ...message, viewable: true, viewed: false }]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send media');
     } finally {
@@ -182,7 +202,15 @@ export default function Chat() {
                 )}
                 {message.kind === 'text' && <div className="bubble-text">{message.body}</div>}
                 {message.kind !== 'text' &&
-                  (message.viewable ? (
+                  // The sender can always re-view their own media until it
+                  // expires (per spec) — the server's mediaFlags() already
+                  // returns viewable:true for the sender on the GET
+                  // .../messages read path, but the POST .../media response
+                  // that lands here right after sending doesn't carry the
+                  // field at all (see the comment in handleFileChange), so
+                  // `isMine` is the authoritative fallback rather than
+                  // trusting `message.viewable` alone.
+                  ((isMine || message.viewable) ? (
                     <button
                       type="button"
                       className="bubble-media-cta"

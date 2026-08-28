@@ -150,7 +150,14 @@ export default function Story() {
 
       <div className="story-media">
         {mediaUrl && current.kind === 'video' && (
-          <video key={current.id} src={mediaUrl} autoPlay playsInline onEnded={goNext} />
+          // muted is required for autoplay to actually start under browser
+          // autoplay policies (Chrome/Safari block unmuted autoplay) — an
+          // unmuted <video autoPlay> would just sit frozen on the first
+          // frame and never fire onEnded, stalling the whole viewer. Losing
+          // audio on story videos is an accepted MVP tradeoff. onError is a
+          // fallback advance so a broken/unsupported file doesn't strand
+          // the viewer on a dead frame forever.
+          <video key={current.id} src={mediaUrl} autoPlay muted playsInline onEnded={goNext} onError={goNext} />
         )}
         {mediaUrl && current.kind === 'image' && <img src={mediaUrl} alt="" />}
       </div>
