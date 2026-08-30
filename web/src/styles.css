@@ -1,7 +1,7 @@
-/* Messenger-style theme: light by default, follows system dark mode. */
+/* Messenger-style theme: light, always — dark mode intentionally disabled. */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #ffffff;
   --bg-elevated: #f0f2f5;
   --bg-hover: #f2f2f2;
@@ -15,20 +15,6 @@
   --bubble-mine: linear-gradient(135deg, #00b2ff 0%, #006aff 100%);
   --danger: #e41e3f;
   --avatar: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #050505;
-    --bg-elevated: #242526;
-    --bg-hover: #303031;
-    --border: #3e4042;
-    --text: #e4e6eb;
-    --text-muted: #b0b3b8;
-    --bubble-peer: #303030;
-    --bubble-peer-text: #e4e6eb;
-    --danger: #ff5c77;
-  }
 }
 
 * {
