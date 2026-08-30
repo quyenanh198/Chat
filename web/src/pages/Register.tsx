@@ -51,7 +51,7 @@ export default function Register() {
           />
         </label>
         <label>
-          Invite code <span className="auth-optional">(not needed for the very first account)</span>
+          Invite code <span className="auth-optional">(from your admin — the very first account needs the server's bootstrap invite, if one is set)</span>
           <input value={invite} onChange={(event) => setInvite(event.target.value)} autoComplete="off" />
         </label>
         {error && <p className="auth-error">{error}</p>}
