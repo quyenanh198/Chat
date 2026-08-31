@@ -1306,3 +1306,84 @@ a {
   .emoji-panel { grid-template-columns: repeat(7, 1fr); }
   .gif-grid { max-height: none; }
 }
+
+/* ---------- Hover animations (desktop pointers only) ---------- */
+
+.bubble-actions { display: none; }
+
+@media (hover: hover) and (pointer: fine) {
+  .bubble-stack .bubble {
+    transition: transform 0.13s ease, box-shadow 0.13s ease;
+  }
+
+  .bubble-row:hover .bubble-stack .bubble {
+    transform: translateY(-1px) scale(1.012);
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.09);
+  }
+
+  .bubble-actions {
+    display: inline-flex;
+    gap: 0.15rem;
+    align-self: center;
+    margin: 0 0.35rem;
+    opacity: 0;
+    transform: translateX(-6px) scale(0.85);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    pointer-events: none;
+  }
+
+  .bubble-row--mine .bubble-actions {
+    order: -1;
+    transform: translateX(6px) scale(0.85);
+  }
+
+  .bubble-row:hover .bubble-actions {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .bubble-actions button {
+    width: 1.9rem;
+    height: 1.9rem;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s ease, background 0.12s ease;
+  }
+
+  .bubble-actions button:hover {
+    transform: scale(1.18);
+    background: var(--bg-elevated);
+  }
+
+  .msg-avatar,
+  .conversation-row,
+  .reaction-chip {
+    transition: transform 0.12s ease;
+  }
+
+  .reaction-chip:hover { transform: scale(1.12); }
+}
+
+.react-palette {
+  animation: palette-pop 0.16s ease;
+  transform-origin: bottom center;
+}
+
+@keyframes palette-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.reaction-chip { animation: chip-pop 0.18s ease; }
+
+@keyframes chip-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
