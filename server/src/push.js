@@ -61,8 +61,11 @@ export function createPush(config, db, hasOpenSocket, logger = console, pushTime
     const ids = Array.isArray(userIds) ? userIds : [userIds];
     if (ids.length === 0) return;
 
-    const targetIds = ids.filter((id) => !hasOpenSocket(id));
-    if (targetIds.length === 0) return;
+    // Send to every recipient regardless of open sockets: a user may be
+    // online on one device while their phone's tab is closed — the phone
+    // must still get the push. The service worker suppresses the
+    // notification when a visible client is already showing the app.
+    const targetIds = ids;
 
     const placeholders = targetIds.map(() => '?').join(',');
     const subs = db.prepare(`SELECT * FROM push_subs WHERE user_id IN (${placeholders})`).all(...targetIds);

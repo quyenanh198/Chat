@@ -109,9 +109,9 @@ export function buildApp({
 
     app.pushToUsers(recipientIds, { type: 'message:new', conversation_id: conversationId, message });
 
-    const sender = db.prepare('SELECT username FROM users WHERE id = ?').get(message.sender_id);
+    const sender = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(message.sender_id);
     await app.sendPush(recipientIds, {
-      title: sender?.username ?? 'Lazybutts',
+      title: sender?.display_name || sender?.username || 'Lazybutts',
       body: pushBodyFor(message),
       url: `/chat/${conversationId}`,
     });

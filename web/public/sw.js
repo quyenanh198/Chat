@@ -51,10 +51,18 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      data: { url: data.url || '/' },
-    }),
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // App already on screen? Don't double-notify — the WS message is
+        // rendering live right now.
+        const visible = clientList.some((c) => c.visibilityState === 'visible');
+        if (visible) return undefined;
+        return self.registration.showNotification(data.title, {
+          body: data.body,
+          data: { url: data.url || '/' },
+        });
+      }),
   );
 });
 
