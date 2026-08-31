@@ -159,10 +159,21 @@ export default function Chat() {
     };
   }, [conversationId, loadMessages]);
 
+  // While this is in the future we force-follow the bottom — set on every
+  // send so late-loading gifs/stickers can't leave the view stranded above
+  // the message that was just sent.
+  const followBottomUntil = useRef(0);
+
   const scrollToBottom = useCallback(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-    else bottomRef.current?.scrollIntoView({ block: 'end' });
+    if (!list) {
+      bottomRef.current?.scrollIntoView({ block: 'end' });
+      return;
+    }
+    list.scrollTop = list.scrollHeight;
+    requestAnimationFrame(() => {
+      list.scrollTop = list.scrollHeight;
+    });
   }, []);
 
   // Late-loading embeds (gifs/stickers) grow the list after the initial
@@ -170,10 +181,12 @@ export default function Chat() {
   const scrollIfNearBottom = useCallback(() => {
     const list = listRef.current;
     if (!list) return;
-    if (list.scrollHeight - list.scrollTop - list.clientHeight < 240) {
-      list.scrollTop = list.scrollHeight;
+    const near = list.scrollHeight - list.scrollTop - list.clientHeight
+      < Math.max(320, list.clientHeight * 0.6);
+    if (near || Date.now() < followBottomUntil.current) {
+      scrollToBottom();
     }
-  }, []);
+  }, [scrollToBottom]);
 
   useEffect(() => {
     scrollToBottom();
@@ -265,6 +278,7 @@ export default function Chat() {
     if (!body || sending) return;
     setSending(true);
     try {
+      followBottomUntil.current = Date.now() + 5000;
       const message = await sendMessage(conversationId, body, replyTarget?.id);
       setMessages((prev) => [...prev, message]);
       setText('');
@@ -277,6 +291,7 @@ export default function Chat() {
   }
 
   async function sendFile(file: File) {
+    followBottomUntil.current = Date.now() + 5000;
     setSending(true);
     try {
       const message = await sendMedia(conversationId, file);
@@ -406,6 +421,7 @@ export default function Chat() {
   }
 
   async function sendGif(gif: GifResult) {
+    followBottomUntil.current = Date.now() + 5000;
     recordRecent(gif);
     setShowGif(false);
     setShowMeme(false);
