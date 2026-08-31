@@ -196,6 +196,7 @@ export interface Reaction {
   emoji: string;
   count: number;
   mine?: boolean;
+  names?: string[];
 }
 
 export interface GifResult {

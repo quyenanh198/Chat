@@ -44,10 +44,9 @@ export async function registerGifRoutes(app) {
       return reply.code(503).send({ error: 'gif_disabled' });
     }
     const q = String(request.query?.q ?? '').slice(0, 100).trim();
-    if (!q) {
-      return reply.code(400).send({ error: 'query_required' });
-    }
-    const url = `${GIPHY_URL}?api_key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&limit=24&rating=pg-13&lang=vi`;
+    const url = q
+      ? `${GIPHY_URL}?api_key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&limit=24&rating=pg-13&lang=vi`
+      : `https://api.giphy.com/v1/gifs/trending?api_key=${encodeURIComponent(key)}&limit=24&rating=pg-13`;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);

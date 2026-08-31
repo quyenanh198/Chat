@@ -82,6 +82,9 @@ export default function Chat() {
   const [gifQuery, setGifQuery] = useState('');
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifStatus, setGifStatus] = useState<string | null>(null);
+  const [recentGifs, setRecentGifs] = useState<GifResult[]>(() => {
+    try { return JSON.parse(localStorage.getItem('chat.recentGifs') || '[]'); } catch { return []; }
+  });
 
   const [viewer, setViewer] = useState<MediaViewerState | null>(null);
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -257,13 +260,19 @@ export default function Chat() {
     }
   }
 
-  async function runGifSearch() {
-    const q = gifQuery.trim();
-    if (!q) return;
-    setGifStatus('Đang tìm…');
+  function recordRecent(gif: GifResult) {
+    setRecentGifs((prev) => {
+      const next = [gif, ...prev.filter((g) => g.url !== gif.url)].slice(0, 16);
+      try { localStorage.setItem('chat.recentGifs', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  async function loadGifs(q: string) {
+    setGifStatus('Đang tải…');
     setGifResults([]);
     try {
-      const { results } = await searchGifs(q);
+      const { results } = await searchGifs(q.trim());
       setGifResults(results);
       setGifStatus(results.length ? null : 'Không thấy GIF nào.');
     } catch (err) {
@@ -274,6 +283,20 @@ export default function Chat() {
           : 'Tìm GIF thất bại, thử lại.',
       );
     }
+  }
+
+  function openGifPanel() {
+    const next = !showGif;
+    setShowGif(next);
+    setShowEmoji(false);
+    setShowMeme(false);
+    if (next && gifResults.length === 0) void loadGifs('');
+  }
+
+  async function runGifSearch() {
+    const q = gifQuery.trim();
+    if (!q) return;
+    await loadGifs(q);
   }
 
   async function loadMemes(q: string) {
@@ -334,6 +357,7 @@ export default function Chat() {
   }
 
   async function sendGif(gif: GifResult) {
+    recordRecent(gif);
     setShowGif(false);
     setShowMeme(false);
     setGifResults([]);
@@ -483,6 +507,7 @@ export default function Chat() {
                       key={r.emoji}
                       type="button"
                       className={`reaction-chip${r.mine ? ' reaction-chip--mine' : ''}`}
+                      title={r.names?.join(', ')}
                       onClick={() => toggleReaction(message, r.emoji)}
                     >
                       {r.emoji} {r.count > 1 ? r.count : ''}
@@ -499,6 +524,16 @@ export default function Chat() {
 
       {showMeme && (
         <div className="gif-panel">
+          {recentGifs.length > 0 && (
+            <div className="recent-strip">
+              <span className="recent-label">Hay dùng</span>
+              {recentGifs.map((g) => (
+                <button key={g.url} type="button" onClick={() => sendGif(g)}>
+                  <img src={g.preview} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
           <div className="meme-packs">
             {MEME_PACKS.map((pack) => (
               <button
@@ -555,6 +590,16 @@ export default function Chat() {
       )}
       {showGif && (
         <div className="gif-panel">
+          {recentGifs.length > 0 && (
+            <div className="recent-strip">
+              <span className="recent-label">Hay dùng</span>
+              {recentGifs.map((g) => (
+                <button key={g.url} type="button" onClick={() => sendGif(g)}>
+                  <img src={g.preview} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
           <div className="gif-search-row">
             <input
               className="composer-input"
@@ -606,7 +651,7 @@ export default function Chat() {
         <button
           type="button"
           className="icon-button gif-button"
-          onClick={() => { setShowGif((v) => !v); setShowEmoji(false); setShowMeme(false); }}
+          onClick={openGifPanel}
           aria-label="GIF"
         >
           GIF

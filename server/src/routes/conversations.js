@@ -67,15 +67,22 @@ function reactionsByMessage(db, messageIds, meId) {
   const placeholders = messageIds.map(() => '?').join(',');
   const rows = db
     .prepare(
-      `SELECT message_id, emoji, COUNT(*) AS count,
-              MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS mine
-       FROM message_reactions WHERE message_id IN (${placeholders})
-       GROUP BY message_id, emoji ORDER BY MIN(created_at)`,
+      `SELECT r.message_id, r.emoji, COUNT(*) AS count,
+              MAX(CASE WHEN r.user_id = ? THEN 1 ELSE 0 END) AS mine,
+              GROUP_CONCAT(COALESCE(u.display_name, u.username), CHAR(31)) AS names
+       FROM message_reactions r JOIN users u ON u.id = r.user_id
+       WHERE r.message_id IN (${placeholders})
+       GROUP BY r.message_id, r.emoji ORDER BY MIN(r.created_at)`,
     )
     .all(meId, ...messageIds);
   for (const r of rows) {
     if (!out.has(r.message_id)) out.set(r.message_id, []);
-    out.get(r.message_id).push({ emoji: r.emoji, count: r.count, mine: !!r.mine });
+    out.get(r.message_id).push({
+      emoji: r.emoji,
+      count: r.count,
+      mine: !!r.mine,
+      names: r.names ? r.names.split(String.fromCharCode(31)) : [],
+    });
   }
   return out;
 }
@@ -256,7 +263,7 @@ export async function registerConversationRoutes(app) {
       message_id: messageId,
       user_id: request.user.id,
       emoji,
-      reactions: summary.map(({ emoji: e, count }) => ({ emoji: e, count })),
+      reactions: summary.map(({ emoji: e, count, names }) => ({ emoji: e, count, names })),
     });
 
     return reply.send({ ok: true, reactions: summary });
