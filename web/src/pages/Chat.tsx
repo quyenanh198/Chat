@@ -639,15 +639,37 @@ export default function Chat() {
                   // `isMine` is the authoritative fallback rather than
                   // trusting `message.viewable` alone.
                   ((isMine || message.viewable) ? (
-                    <button
-                      type="button"
-                      className="bubble-media-cta"
-                      onClick={() => openMedia(message)}
-                      disabled={openingMessageId === message.id}
-                    >
-                      {message.kind === 'video' ? '🎥' : '📷'}{' '}
-                      {openingMessageId === message.id ? 'Loading…' : 'Tap to view'}
-                    </button>
+                    // Images in 24h mode (and always one's own) show an
+                    // inline thumbnail — the /thumb route doesn't count as
+                    // a view. View-once images from others and all videos
+                    // keep the tap-to-view chip.
+                    message.kind === 'image' && (isMine || message.media_mode === '24h') ? (
+                      <button
+                        type="button"
+                        className="bubble-media-thumb"
+                        onClick={() => openMedia(message)}
+                        disabled={openingMessageId === message.id}
+                        aria-label="View photo"
+                      >
+                        <img
+                          className="bubble-img"
+                          src={`/api/media/${message.id}/thumb`}
+                          alt=""
+                          loading="lazy"
+                          onLoad={scrollIfNearBottom}
+                        />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="bubble-media-cta"
+                        onClick={() => openMedia(message)}
+                        disabled={openingMessageId === message.id}
+                      >
+                        {message.kind === 'video' ? '🎥' : '📷'}{' '}
+                        {openingMessageId === message.id ? 'Loading…' : 'Tap to view'}
+                      </button>
+                    )
                   ) : (
                     <div className="bubble-media-opened">Opened</div>
                   ))}

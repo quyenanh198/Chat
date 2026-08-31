@@ -8,8 +8,10 @@ import { makeTestDb } from './helpers.js';
 
 const ALL_TABLES = [
   'conversations',
+  'custom_stickers',
   'invites',
   'media_views',
+  'message_reactions',
   'messages',
   'participants',
   'push_subs',
@@ -35,7 +37,7 @@ describe('createDb', () => {
     expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
   });
 
-  it('creates all 9 tables defined in schema.sql', () => {
+  it('creates all 11 tables defined in schema.sql', () => {
     const { db } = makeTestDb();
 
     const names = db

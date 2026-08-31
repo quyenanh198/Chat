@@ -1,6 +1,44 @@
 import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { access, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import sharp from 'sharp';
+
+// Image extensions we downscale into a webp thumbnail for the in-bubble
+// preview. GIFs are excluded on purpose (a static thumb would kill the
+// animation) and HEIC because sharp's prebuilt binaries can't decode it —
+// both fall back to serving the original.
+const THUMBABLE_EXTS = new Set(['.jpg', '.png', '.webp']);
+const THUMB_SUFFIX = '.thumb.webp';
+const THUMB_MAX_DIM = 520;
+
+export function thumbPathFor(mediaPath) {
+  return `${mediaPath}${THUMB_SUFFIX}`;
+}
+
+// Returns the path of a downscaled webp thumbnail for `mediaPath`, creating
+// it on first use (lazy — old messages get thumbs the first time someone
+// scrolls past them). Returns null when the format isn't thumbable or sharp
+// fails; callers then serve the original file instead.
+export async function ensureThumb(mediaPath) {
+  if (!THUMBABLE_EXTS.has(extname(mediaPath).toLowerCase())) return null;
+  const thumbPath = thumbPathFor(mediaPath);
+  try {
+    await access(thumbPath);
+    return thumbPath;
+  } catch {
+    // not generated yet — fall through and build it
+  }
+  try {
+    await sharp(mediaPath)
+      .rotate() // honor EXIF orientation (phone photos)
+      .resize(THUMB_MAX_DIM, THUMB_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 72 })
+      .toFile(thumbPath);
+    return thumbPath;
+  } catch {
+    return null;
+  }
+}
 
 // Mimetype -> file extension used when saving an upload to disk.
 const EXT_BY_MIME = {

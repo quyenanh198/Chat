@@ -377,6 +377,8 @@ describe('GET /api/me', () => {
       username: 'alice',
       is_admin: true,
       media_mode: 'once',
+      display_name: 'alice',
+      avatar_at: null,
     });
   });
 
@@ -479,7 +481,7 @@ describe('GET /api/users', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns all users except the requester with only id and username, ordered by username', async () => {
+  it('returns all users except the requester with public profile fields, ordered by username', async () => {
     const app = buildTestApp();
     const adminCookie = await registerAdminAndGetCookie(app);
     const code = await createInvite(app, adminCookie);
@@ -494,6 +496,8 @@ describe('GET /api/users', () => {
     expect(users[0]).toEqual({
       id: expect.any(Number),
       username: 'alice',
+      display_name: null,
+      avatar_at: null,
     });
     expect(users[0].pass_hash).toBeUndefined();
     expect(users[0].media_mode).toBeUndefined();

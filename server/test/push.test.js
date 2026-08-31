@@ -58,32 +58,19 @@ describe('createPush', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('skips sending to a userId that currently has an open websocket', async () => {
+  it('sends to every subscription even when the userId has an open websocket (multi-device delivery)', async () => {
     const { db } = makeTestDb();
     const sendSpy = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({});
-    insertSub(db, { userId: 1 });
-    const openEndpoint = insertSub(db, { userId: 2 });
+    const first = insertSub(db, { userId: 1 });
+    const second = insertSub(db, { userId: 2 });
 
     const hasOpenSocket = (id) => id === 1;
     const { sendPush } = createPush(vapidConfig(), db, hasOpenSocket, { warn: vi.fn() });
 
     await sendPush([1, 2], { title: 't', body: 'b', url: '/x' });
 
-    expect(sendSpy).toHaveBeenCalledTimes(1);
-    expect(sendSpy.mock.calls[0][0].endpoint).toBe(openEndpoint);
-  });
-
-  it('sends nothing and does not query the db when every target has an open socket', async () => {
-    const { db } = makeTestDb();
-    insertSub(db, { userId: 1 });
-    const sendSpy = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({});
-    const querySpy = vi.spyOn(db, 'prepare');
-
-    const { sendPush } = createPush(vapidConfig(), db, () => true, { warn: vi.fn() });
-    await sendPush([1], { title: 't', body: 'b', url: '/x' });
-
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(querySpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls.map((c) => c[0].endpoint).sort()).toEqual([first, second].sort());
   });
 
   it('deletes the push_subs row when the push service responds 410 Gone', async () => {

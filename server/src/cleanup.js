@@ -1,5 +1,7 @@
 import { unlink } from 'node:fs/promises';
 
+import { thumbPathFor } from './media.js';
+
 const DEFAULT_INTERVAL_MS = 60_000;
 
 // One cleanup pass: hard-deletes every message/story whose expires_at has
@@ -20,7 +22,12 @@ export async function runCleanup(db, mediaDir) {
   const expiredMessages = db.prepare('SELECT id, media_path FROM messages WHERE expires_at <= ?').all(now);
   db.prepare('DELETE FROM messages WHERE expires_at <= ?').run(now);
   for (const { media_path } of expiredMessages) {
-    if (media_path) await unlink(media_path).catch(() => {});
+    if (media_path) {
+      await unlink(media_path).catch(() => {});
+      // Image messages may have a lazily generated preview sitting next to
+      // the original (see media.js's ensureThumb) — sweep it along.
+      await unlink(thumbPathFor(media_path)).catch(() => {});
+    }
   }
 
   const expiredStories = db.prepare('SELECT id, media_path FROM stories WHERE expires_at <= ?').all(now);

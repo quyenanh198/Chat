@@ -1,6 +1,6 @@
 import { readFile, unlink } from 'node:fs/promises';
 import { requireUser } from '../auth.js';
-import { saveUpload, mimeForPath, UnsupportedMediaTypeError } from '../media.js';
+import { saveUpload, mimeForPath, ensureThumb, thumbPathFor, UnsupportedMediaTypeError } from '../media.js';
 
 const MEDIA_TTL_MS = 24 * 60 * 60 * 1000; // media messages expire 24h after send, both modes
 
@@ -164,9 +164,40 @@ export async function registerMediaRoutes(app) {
         });
         deleteTx();
         await unlink(message.media_path).catch(() => {});
+        await unlink(thumbPathFor(message.media_path)).catch(() => {});
       }
     }
 
     return reply.type(mimeForPath(message.media_path)).send(buffer);
+  });
+
+  // In-bubble preview: a downscaled thumbnail that does NOT count as a view.
+  // Only images, and only where previewing can't defeat the self-destruct
+  // rules: the sender always may, a recipient only in '24h' mode (a 'once'
+  // recipient gets 403 — their bubble keeps the tap-to-view chip, and the
+  // real view still burns through GET /media/:id).
+  app.get('/media/:messageId/thumb', { preHandler: requireUser }, async (request, reply) => {
+    const db = app.db;
+    const messageId = Number(request.params.messageId);
+    if (!Number.isInteger(messageId)) {
+      return reply.code(400).send({ error: 'invalid_message_id' });
+    }
+
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
+    if (!message || message.kind !== 'image' || message.expires_at <= Date.now()) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+    if (!isMember(db, message.conversation_id, request.user.id)) {
+      return reply.code(403).send({ error: 'not_a_member' });
+    }
+    if (message.sender_id !== request.user.id && message.media_mode !== '24h') {
+      return reply.code(403).send({ error: 'no_preview' });
+    }
+
+    const thumbPath = await ensureThumb(message.media_path);
+    const servePath = thumbPath || message.media_path;
+    const buffer = await readFile(servePath);
+    reply.header('cache-control', 'private, max-age=86400');
+    return reply.type(thumbPath ? 'image/webp' : mimeForPath(message.media_path)).send(buffer);
   });
 }

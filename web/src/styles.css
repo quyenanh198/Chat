@@ -1472,3 +1472,21 @@ a {
 .chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }
+
+/* ---------- Inline media thumbnails ---------- */
+
+.bubble-media-thumb {
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  display: block;
+  max-width: 100%;
+}
+.bubble-media-thumb .bubble-img { max-height: 300px; }
+/* An image-only bubble sheds its background just like GIF embeds do. */
+.bubble:has(> .bubble-media-thumb:first-child:last-child) {
+  background: transparent !important;
+  padding: 0;
+  box-shadow: none;
+}
