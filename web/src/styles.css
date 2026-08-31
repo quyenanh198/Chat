@@ -1292,15 +1292,34 @@ a {
   .chat-panel-col .emoji-panel {
     position: sticky;
     top: 1rem;
-    width: 440px;
+    width: 460px;
     max-width: calc(100vw - 990px);
     min-width: 300px;
     margin: 1rem 1rem 0 0.75rem;
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: 16px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  /* GIF/sticker: tràn hết chiều cao cột, lưới cuộn bên trong */
+  .chat-panel-col .gif-panel {
+    height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-panel-col .gif-panel .gif-grid {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  .chat-panel-col .emoji-panel {
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
   }
 
   .emoji-panel { grid-template-columns: repeat(7, 1fr); }
@@ -1386,4 +1405,18 @@ a {
 @keyframes chip-pop {
   from { transform: scale(0.6); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- Frozen composer: luôn dính đáy màn hình ---------- */
+
+.composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+}
+
+.reply-strip {
+  position: sticky;
+  bottom: calc(3.55rem + env(safe-area-inset-bottom));
+  z-index: 30;
 }
