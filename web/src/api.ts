@@ -207,6 +207,10 @@ export function searchGifs(q: string): Promise<{ results: GifResult[] }> {
   return api.get(`/api/gif/search?q=${encodeURIComponent(q)}`);
 }
 
+export function searchMemes(q: string): Promise<{ results: GifResult[] }> {
+  return api.get(`/api/gif/memes${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+}
+
 export function setReaction(conversationId: number, messageId: number, emoji: string): Promise<{ ok: boolean; reactions: Reaction[] }> {
   return api.post(`/api/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji });
 }

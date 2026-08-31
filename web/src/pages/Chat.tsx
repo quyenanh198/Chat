@@ -4,6 +4,7 @@ import {
   ApiError,
   avatarUrl,
   searchGifs,
+  searchMemes,
   setReaction,
   type GifResult,
   getConversations,
@@ -50,6 +51,10 @@ export default function Chat() {
   const [reactingId, setReactingId] = useState<number | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGif, setShowGif] = useState(false);
+  const [showMeme, setShowMeme] = useState(false);
+  const [memeQuery, setMemeQuery] = useState('');
+  const [memeResults, setMemeResults] = useState<GifResult[]>([]);
+  const [memeStatus, setMemeStatus] = useState<string | null>(null);
   const [gifQuery, setGifQuery] = useState('');
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifStatus, setGifStatus] = useState<string | null>(null);
@@ -247,8 +252,30 @@ export default function Chat() {
     }
   }
 
+  async function loadMemes(q: string) {
+    setMemeStatus('Đang tải…');
+    setMemeResults([]);
+    try {
+      const { results } = await searchMemes(q.trim());
+      setMemeResults(results);
+      setMemeStatus(results.length ? null : 'Không thấy meme nào.');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '';
+      setMemeStatus(msg === 'gif_disabled' ? 'Chưa bật Giphy (GIF_GIPHY_KEY).' : 'Tải meme thất bại.');
+    }
+  }
+
+  function openMemePanel() {
+    const next = !showMeme;
+    setShowMeme(next);
+    setShowGif(false);
+    setShowEmoji(false);
+    if (next && memeResults.length === 0) void loadMemes('');
+  }
+
   async function sendGif(gif: GifResult) {
     setShowGif(false);
+    setShowMeme(false);
     setGifResults([]);
     setGifQuery('');
     setSending(true);
@@ -410,6 +437,28 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {showMeme && (
+        <div className="gif-panel">
+          <div className="gif-search-row">
+            <input
+              className="composer-input"
+              value={memeQuery}
+              onChange={(e) => setMemeQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); loadMemes(memeQuery); } }}
+              placeholder="Tìm meme, sticker…"
+            />
+            <button type="button" className="primary-button" onClick={() => loadMemes(memeQuery)}>Tìm</button>
+          </div>
+          {memeStatus && <p className="muted-note">{memeStatus}</p>}
+          <div className="gif-grid gif-grid--memes">
+            {memeResults.map((m) => (
+              <button key={m.id} type="button" onClick={() => sendGif(m)}>
+                <img src={m.preview} alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {showGif && (
         <div className="gif-panel">
           <div className="gif-search-row">
@@ -455,7 +504,7 @@ export default function Chat() {
         <button
           type="button"
           className="icon-button"
-          onClick={() => { setShowEmoji((v) => !v); setShowGif(false); }}
+          onClick={() => { setShowEmoji((v) => !v); setShowGif(false); setShowMeme(false); }}
           aria-label="Emoji"
         >
           😊
@@ -463,10 +512,19 @@ export default function Chat() {
         <button
           type="button"
           className="icon-button gif-button"
-          onClick={() => { setShowGif((v) => !v); setShowEmoji(false); }}
+          onClick={() => { setShowGif((v) => !v); setShowEmoji(false); setShowMeme(false); }}
           aria-label="GIF"
         >
           GIF
+        </button>
+        <button type="button" className="icon-button" onClick={openMemePanel} aria-label="Meme sticker">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8l-6 6H6a2 2 0 0 1-2-2V6Z" />
+            <path d="M14 20v-4a2 2 0 0 1 2-2h4" />
+            <circle cx="9" cy="10" r="0.6" fill="currentColor" />
+            <circle cx="15" cy="10" r="0.6" fill="currentColor" />
+            <path d="M9 13.5c.8.9 1.8 1.4 3 1.4" />
+          </svg>
         </button>
         <input
           ref={composerRef}

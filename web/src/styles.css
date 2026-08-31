@@ -1058,3 +1058,7 @@ a {
   box-shadow: 0 0 0 999px rgba(255, 255, 255, 0.55);
   pointer-events: none;
 }
+
+.gif-grid--memes { grid-template-columns: repeat(4, 1fr); }
+.gif-grid--memes button { background: transparent; aspect-ratio: 1; }
+.gif-grid--memes img { object-fit: contain; }
