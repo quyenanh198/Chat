@@ -1145,3 +1145,15 @@ a {
   .emoji-panel { grid-template-columns: repeat(7, 1fr); max-height: 22rem; }
   .gif-grid { max-height: none; }
 }
+
+/* Wide screens: roomier picker + wrapped pack chips (mouse can't swipe). */
+@media (min-width: 1024px) {
+  .gif-panel { width: 440px; left: calc(50% + 336px); }
+  .meme-packs { flex-wrap: wrap; overflow-x: visible; }
+  .gif-grid { grid-template-columns: repeat(4, 1fr); }
+  .gif-grid--memes { grid-template-columns: repeat(5, 1fr); }
+}
+
+@media (min-width: 1450px) {
+  .gif-panel { width: 500px; }
+}
