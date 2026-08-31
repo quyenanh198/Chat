@@ -30,6 +30,21 @@ function conversationTitle(conversation: Conversation | null, meId: number): str
   return other ? (other.display_name || other.username) : 'Unknown';
 }
 
+// Các bộ sticker quen mặt với người Việt, đã kiểm tra có trên Giphy.
+const MEME_PACKS: { label: string; q: string }[] = [
+  { label: 'Hot', q: '' },
+  { label: 'Quby', q: 'quby' },
+  { label: 'Mochi Cat', q: 'mochi mochi peach cat' },
+  { label: 'Peach & Goma', q: 'peach goma' },
+  { label: 'Milk & Mocha', q: 'milk mocha' },
+  { label: 'TonTon', q: 'tonton friends' },
+  { label: 'Capoo', q: 'capoo' },
+  { label: 'Menhera', q: 'menhera' },
+  { label: 'Tuzki', q: 'tuzki' },
+  { label: 'Cheems', q: 'cheems' },
+  { label: 'Bé Heo', q: 'bé heo' },
+];
+
 const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 const EMOJI_PANEL = ['😀','😁','😂','🤣','😊','😍','😘','😜','🤔','😴','😭','😱','😡','🥳','🤗','👍','👎','👏','🙏','💪','🔥','✨','🎉','❤️','💔','😅','🙈','🤝','😷','🤯','😇','🥰','😋','🤤','🍜','⚡'];
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(gif|png|jpe?g|webp)(\?\S*)?$/i;
@@ -55,6 +70,7 @@ export default function Chat() {
   const [memeQuery, setMemeQuery] = useState('');
   const [memeResults, setMemeResults] = useState<GifResult[]>([]);
   const [memeStatus, setMemeStatus] = useState<string | null>(null);
+  const [memePack, setMemePack] = useState('');
   const [gifQuery, setGifQuery] = useState('');
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifStatus, setGifStatus] = useState<string | null>(null);
@@ -439,15 +455,27 @@ export default function Chat() {
 
       {showMeme && (
         <div className="gif-panel">
+          <div className="meme-packs">
+            {MEME_PACKS.map((pack) => (
+              <button
+                key={pack.label}
+                type="button"
+                className={`meme-pack-chip${memePack === pack.q ? ' meme-pack-chip--on' : ''}`}
+                onClick={() => { setMemePack(pack.q); setMemeQuery(''); void loadMemes(pack.q); }}
+              >
+                {pack.label}
+              </button>
+            ))}
+          </div>
           <div className="gif-search-row">
             <input
               className="composer-input"
               value={memeQuery}
               onChange={(e) => setMemeQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); loadMemes(memeQuery); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setMemePack('__search__'); loadMemes(memeQuery); } }}
               placeholder="Tìm meme, sticker…"
             />
-            <button type="button" className="primary-button" onClick={() => loadMemes(memeQuery)}>Tìm</button>
+            <button type="button" className="primary-button" onClick={() => { setMemePack('__search__'); loadMemes(memeQuery); }}>Tìm</button>
           </div>
           {memeStatus && <p className="muted-note">{memeStatus}</p>}
           <div className="gif-grid gif-grid--memes">

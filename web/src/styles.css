@@ -1062,3 +1062,29 @@ a {
 .gif-grid--memes { grid-template-columns: repeat(4, 1fr); }
 .gif-grid--memes button { background: transparent; aspect-ratio: 1; }
 .gif-grid--memes img { object-fit: contain; }
+
+.meme-packs {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 0.1rem;
+}
+.meme-packs::-webkit-scrollbar { display: none; }
+
+.meme-pack-chip {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.meme-pack-chip--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
