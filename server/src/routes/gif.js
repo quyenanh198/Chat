@@ -1,10 +1,10 @@
 import { requireUser } from '../auth.js';
 
-const TENOR_URL = 'https://tenor.googleapis.com/v2/search';
+const GIPHY_URL = 'https://api.giphy.com/v1/gifs/search';
 
 export async function registerGifRoutes(app) {
   app.get('/gif/search', { preHandler: requireUser }, async (request, reply) => {
-    const key = app.config.tenorKey;
+    const key = app.config.giphyKey;
     if (!key) {
       return reply.code(503).send({ error: 'gif_disabled' });
     }
@@ -12,7 +12,7 @@ export async function registerGifRoutes(app) {
     if (!q) {
       return reply.code(400).send({ error: 'query_required' });
     }
-    const url = `${TENOR_URL}?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&limit=24&media_filter=gif,tinygif&contentfilter=medium`;
+    const url = `${GIPHY_URL}?api_key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&limit=24&rating=pg-13&lang=vi`;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
@@ -22,13 +22,13 @@ export async function registerGifRoutes(app) {
         return reply.code(502).send({ error: 'gif_upstream_error' });
       }
       const data = await res.json();
-      const results = (data.results ?? [])
-        .map((r) => ({
-          id: r.id,
-          preview: r.media_formats?.tinygif?.url ?? r.media_formats?.gif?.url,
-          url: r.media_formats?.gif?.url ?? r.media_formats?.tinygif?.url,
+      const results = (data.data ?? [])
+        .map((g) => ({
+          id: g.id,
+          preview: g.images?.fixed_width_small?.url ?? g.images?.fixed_width?.url,
+          url: g.images?.original?.url ?? g.images?.fixed_width?.url,
         }))
-        .filter((r) => r.preview && r.url);
+        .filter((g) => g.preview && g.url);
       return reply.send({ results });
     } catch {
       return reply.code(502).send({ error: 'gif_upstream_error' });

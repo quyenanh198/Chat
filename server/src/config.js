@@ -30,9 +30,9 @@ export function loadConfig(env = process.env) {
   // behavior (fine when the admin registers before exposing the app).
   const bootstrapInvite = env.BOOTSTRAP_INVITE || null;
 
-  // Optional Tenor v2 API key: enables the in-app GIF search. Absent = the
+  // Optional Giphy API key: enables the in-app GIF search. Absent = the
   // GIF picker explains how to enable it instead of erroring.
-  const tenorKey = env.GIF_TENOR_KEY || null;
+  const giphyKey = env.GIF_GIPHY_KEY || null;
 
-  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, tenorKey };
+  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, giphyKey };
 }

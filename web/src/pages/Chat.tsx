@@ -241,7 +241,7 @@ export default function Chat() {
       const msg = err instanceof ApiError ? err.message : '';
       setGifStatus(
         msg === 'gif_disabled'
-          ? 'Chưa bật GIF search — thêm GIF_TENOR_KEY (Tenor API) vào server. Vẫn dán được link GIF vào ô chat.'
+          ? 'Chưa bật GIF search — thêm GIF_GIPHY_KEY (Giphy API) vào server. Vẫn dán được link GIF vào ô chat.'
           : 'Tìm GIF thất bại, thử lại.',
       );
     }
