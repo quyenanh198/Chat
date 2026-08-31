@@ -1437,3 +1437,21 @@ a {
   bottom: calc(3.55rem + env(safe-area-inset-bottom));
   z-index: 30;
 }
+
+/* ---------- Softer bubbles ---------- */
+
+/* Tin của mình: gradient nhạt dần theo chiều màn hình (bubble càng cao càng
+   nhạt) — gradient neo vào viewport nên cả cột tin tạo một dải màu liền. */
+.bubble-row--mine .bubble {
+  background: linear-gradient(180deg, #7ec4ff 0%, #3597ff 45%, #0072f5 100%);
+  background-attachment: fixed;
+}
+
+/* Bubble chỉ chứa ảnh/GIF/sticker: bỏ nền và đệm — ảnh tự bo góc. */
+.bubble:has(> .bubble-img:first-child:last-child) {
+  background: transparent !important;
+  padding: 0;
+  box-shadow: none;
+}
+
+.bubble-img { border-radius: 18px; }
