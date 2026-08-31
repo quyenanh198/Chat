@@ -865,3 +865,90 @@ a {
   letter-spacing: 0.08em;
   font-weight: 600;
 }
+
+/* ---------- Reactions / emoji / embeds ---------- */
+
+.bubble-stack {
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bubble-stack .bubble {
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.react-palette {
+  align-self: center;
+  display: flex;
+  gap: 0.2rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.45rem;
+  margin-bottom: 0.25rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.react-palette button {
+  border: none;
+  background: none;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  border-radius: 8px;
+}
+
+.react-palette button:hover { background: var(--bg-elevated); }
+
+.reaction-row {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+  flex-wrap: wrap;
+}
+
+.reaction-row--mine { justify-content: flex-end; }
+
+.reaction-chip {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  cursor: pointer;
+}
+
+.reaction-chip--mine {
+  border-color: var(--accent);
+  background: #e7f3ff;
+}
+
+.bubble-img {
+  max-width: 100%;
+  border-radius: 14px;
+  display: block;
+}
+
+.emoji-panel {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 9.5rem;
+  overflow-y: auto;
+}
+
+.emoji-panel button {
+  border: none;
+  background: none;
+  font-size: 1.3rem;
+  padding: 0.2rem;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.emoji-panel button:hover { background: var(--bg-elevated); }

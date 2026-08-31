@@ -42,6 +42,7 @@ export interface Conversation {
 }
 
 export interface Message {
+  reactions?: Reaction[];
   id: number;
   conversation_id: number;
   sender_id: number;
@@ -186,6 +187,16 @@ export function createConversation(user_ids: number[], name?: string): Promise<{
 
 export function getMessages(conversationId: number): Promise<Message[]> {
   return api.get(`/api/conversations/${conversationId}/messages`);
+}
+
+export interface Reaction {
+  emoji: string;
+  count: number;
+  mine?: boolean;
+}
+
+export function setReaction(conversationId: number, messageId: number, emoji: string): Promise<{ ok: boolean; reactions: Reaction[] }> {
+  return api.post(`/api/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji });
 }
 
 export function sendMessage(conversationId: number, body: string): Promise<Message> {

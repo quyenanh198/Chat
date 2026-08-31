@@ -60,6 +60,26 @@ function serializeConversation(db, conversation, now) {
   };
 }
 
+// Aggregates reactions for a set of message ids as [{emoji, count, mine}] per message.
+function reactionsByMessage(db, messageIds, meId) {
+  const out = new Map();
+  if (messageIds.length === 0) return out;
+  const placeholders = messageIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT message_id, emoji, COUNT(*) AS count,
+              MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS mine
+       FROM message_reactions WHERE message_id IN (${placeholders})
+       GROUP BY message_id, emoji ORDER BY MIN(created_at)`,
+    )
+    .all(meId, ...messageIds);
+  for (const r of rows) {
+    if (!out.has(r.message_id)) out.set(r.message_id, []);
+    out.get(r.message_id).push({ emoji: r.emoji, count: r.count, mine: !!r.mine });
+  }
+  return out;
+}
+
 export async function registerConversationRoutes(app) {
   app.post('/conversations', { preHandler: requireUser }, async (request, reply) => {
     const db = app.db;
@@ -181,11 +201,65 @@ export async function registerConversationRoutes(app) {
     // Media messages (kind image/video) carry viewable/viewed for the
     // requesting user, computed from the self-destruct rules; text messages
     // are left untouched.
-    const withFlags = messages.map((message) =>
-      message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, request.user.id) },
-    );
+    const reactions = reactionsByMessage(db, messages.map((m) => m.id), request.user.id);
+    const withFlags = messages.map((message) => ({
+      ...(message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, request.user.id) }),
+      reactions: reactions.get(message.id) ?? [],
+    }));
 
     return reply.send(withFlags);
+  });
+
+
+  // Set (or replace) my reaction on a message; empty emoji clears it.
+  app.post('/conversations/:id/messages/:mid/reactions', { preHandler: requireUser }, async (request, reply) => {
+    const db = app.db;
+    const conversationId = Number(request.params.id);
+    const messageId = Number(request.params.mid);
+    if (!Number.isInteger(conversationId) || !Number.isInteger(messageId)) {
+      return reply.code(400).send({ error: 'invalid_id' });
+    }
+    if (!isMember(db, conversationId, request.user.id)) {
+      return reply.code(403).send({ error: 'not_a_member' });
+    }
+    const message = db
+      .prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND expires_at > ?')
+      .get(messageId, conversationId, Date.now());
+    if (!message) {
+      return reply.code(404).send({ error: 'message_not_found' });
+    }
+
+    let { emoji } = request.body ?? {};
+    if (typeof emoji !== 'string' || [...emoji].length > 4) {
+      return reply.code(400).send({ error: 'invalid_emoji' });
+    }
+    emoji = emoji.trim();
+
+    if (!emoji) {
+      db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?').run(messageId, request.user.id);
+    } else {
+      db.prepare(
+        `INSERT INTO message_reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(message_id, user_id) DO UPDATE SET emoji = excluded.emoji, created_at = excluded.created_at`,
+      ).run(messageId, request.user.id, emoji, Date.now());
+    }
+
+    const summary = reactionsByMessage(db, [messageId], request.user.id).get(messageId) ?? [];
+    const memberIds = db
+      .prepare('SELECT user_id FROM participants WHERE conversation_id = ?')
+      .all(conversationId)
+      .map((r) => r.user_id);
+    // `mine` is per-viewer — send the neutral shape, clients recompute their own flag.
+    app.pushToUsers(memberIds, {
+      type: 'reaction:update',
+      conversation_id: conversationId,
+      message_id: messageId,
+      user_id: request.user.id,
+      emoji,
+      reactions: summary.map(({ emoji: e, count }) => ({ emoji: e, count })),
+    });
+
+    return reply.send({ ok: true, reactions: summary });
   });
 
   app.post('/conversations/:id/messages', { preHandler: requireUser }, async (request, reply) => {

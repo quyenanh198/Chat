@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  setReaction,
   getConversations,
   getMessages,
   sendMedia,
@@ -25,6 +26,10 @@ function conversationTitle(conversation: Conversation | null, meId: number): str
   return other ? (other.display_name || other.username) : 'Unknown';
 }
 
+const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
+const EMOJI_PANEL = ['😀','😁','😂','🤣','😊','😍','😘','😜','🤔','😴','😭','😱','😡','🥳','🤗','👍','👎','👏','🙏','💪','🔥','✨','🎉','❤️','💔','😅','🙈','🤝','😷','🤯','😇','🥰','😋','🤤','🍜','⚡'];
+const IMAGE_URL_RE = /^https?:\/\/\S+\.(gif|png|jpe?g|webp)(\?\S*)?$/i;
+
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
   const conversationId = Number(id);
@@ -39,6 +44,8 @@ export default function Chat() {
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [reactingId, setReactingId] = useState<number | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
 
   const [viewer, setViewer] = useState<MediaViewerState | null>(null);
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -101,6 +108,34 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
 
+  // Live reaction updates arrive with neutral counts; recompute my own flag.
+  useEffect(() => {
+    const conn: WsConnection = connect();
+    const off = conn.onEvent((event: any) => {
+      if (event.type !== 'reaction:update' || event.conversation_id !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== event.message_id) return m;
+          const prevMine = event.user_id === meId
+            ? (event.emoji || null)
+            : (m.reactions?.find((r) => r.mine)?.emoji ?? null);
+          return {
+            ...m,
+            reactions: (event.reactions as { emoji: string; count: number }[]).map((r) => ({
+              ...r,
+              mine: r.emoji === prevMine,
+            })),
+          };
+        }),
+      );
+    });
+    return () => {
+      off();
+      conn.close();
+    };
+  }, [conversationId, meId]);
+
+
   // Keep the composer focused: on entering the chat, and again the moment a
   // send finishes — the input is disabled while sending, which drops focus.
   useEffect(() => {
@@ -120,6 +155,17 @@ export default function Chat() {
     };
   }, []);
 
+  async function toggleReaction(message: Message, emoji: string) {
+    setReactingId(null);
+    const already = message.reactions?.some((r) => r.mine && r.emoji === emoji);
+    try {
+      const { reactions } = await setReaction(conversationId, message.id, already ? '' : emoji);
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions } : m)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to react');
+    }
+  }
+
   async function handleSendText(event: FormEvent) {
     event.preventDefault();
     const body = text.trim();
@@ -136,10 +182,7 @@ export default function Chat() {
     }
   }
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  async function sendFile(file: File) {
     setSending(true);
     try {
       const message = await sendMedia(conversationId, file);
@@ -156,6 +199,37 @@ export default function Chat() {
     } finally {
       setSending(false);
     }
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void sendFile(file);
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const file = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
+    if (file) {
+      event.preventDefault();
+      void sendFile(file);
+    }
+  }
+
+  function insertEmoji(emoji: string) {
+    const input = composerRef.current;
+    if (!input) {
+      setText((t) => t + emoji);
+      return;
+    }
+    const start = input.selectionStart ?? text.length;
+    const end = input.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    setText(next);
+    requestAnimationFrame(() => {
+      input.focus();
+      const pos = start + emoji.length;
+      input.setSelectionRange(pos, pos);
+    });
   }
 
   async function openMedia(message: Message) {
@@ -204,11 +278,29 @@ export default function Chat() {
           const senderName = participantNames.get(message.sender_id);
           return (
             <div key={message.id} className={`bubble-row${isMine ? ' bubble-row--mine' : ''}`}>
-              <div className="bubble">
+              <div className="bubble-stack">
+                {reactingId === message.id && (
+                  <div className="react-palette" onClick={(e) => e.stopPropagation()}>
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button key={emoji} type="button" onClick={() => toggleReaction(message, emoji)}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              <div
+                className="bubble"
+                onClick={() => setReactingId((cur) => (cur === message.id ? null : message.id))}
+              >
                 {conversation?.is_group && !isMine && senderName && (
                   <div className="bubble-sender">{senderName}</div>
                 )}
-                {message.kind === 'text' && <div className="bubble-text">{message.body}</div>}
+                {message.kind === 'text' &&
+                  (IMAGE_URL_RE.test(message.body ?? '') ? (
+                    <img className="bubble-img" src={message.body!} alt="" loading="lazy" />
+                  ) : (
+                    <div className="bubble-text">{message.body}</div>
+                  ))}
                 {message.kind !== 'text' &&
                   // The sender can always re-view their own media until it
                   // expires (per spec) — the server's mediaFlags() already
@@ -232,12 +324,36 @@ export default function Chat() {
                     <div className="bubble-media-opened">Opened</div>
                   ))}
               </div>
+              {(message.reactions?.length ?? 0) > 0 && (
+                <div className={`reaction-row${isMine ? ' reaction-row--mine' : ''}`}>
+                  {message.reactions!.map((r) => (
+                    <button
+                      key={r.emoji}
+                      type="button"
+                      className={`reaction-chip${r.mine ? ' reaction-chip--mine' : ''}`}
+                      onClick={() => toggleReaction(message, r.emoji)}
+                    >
+                      {r.emoji} {r.count > 1 ? r.count : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+              </div>
             </div>
           );
         })}
         <div ref={bottomRef} />
       </div>
 
+      {showEmoji && (
+        <div className="emoji-panel">
+          {EMOJI_PANEL.map((emoji) => (
+            <button key={emoji} type="button" onClick={() => insertEmoji(emoji)}>
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
       <form className="composer" onSubmit={handleSendText}>
         <button
           type="button"
@@ -249,11 +365,20 @@ export default function Chat() {
           📷
         </button>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" capture hidden onChange={handleFileChange} />
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => setShowEmoji((v) => !v)}
+          aria-label="Emoji"
+        >
+          😊
+        </button>
         <input
           ref={composerRef}
           className="composer-input"
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onPaste={handlePaste}
           placeholder="Message"
           disabled={sending}
         />
