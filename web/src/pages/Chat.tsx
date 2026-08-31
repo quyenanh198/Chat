@@ -48,6 +48,8 @@ const MEME_PACKS: { label: string; q: string }[] = [
   { label: 'Tuzki', q: 'tuzki' },
   { label: 'Cheems', q: 'cheems' },
   { label: 'Bé Heo', q: 'bé heo' },
+  { label: 'Mèo hư', q: 'sassy cat' },
+  { label: 'Mèo quạu', q: 'angry white cat' },
 ];
 
 const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
