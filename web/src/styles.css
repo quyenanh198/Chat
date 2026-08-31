@@ -1362,12 +1362,20 @@ a {
     pointer-events: auto;
   }
 
-  .bubble-actions button {
-    width: 1.9rem;
-    height: 1.9rem;
-    border: 1px solid var(--border);
-    border-radius: 50%;
+  .bubble-actions {
     background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.15rem 0.3rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  }
+
+  .bubble-actions button {
+    width: 1.7rem;
+    height: 1.7rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
     cursor: pointer;
     font-size: 0.9rem;
     display: inline-flex;
@@ -1377,8 +1385,15 @@ a {
   }
 
   .bubble-actions button:hover {
-    transform: scale(1.18);
+    transform: scale(1.25);
     background: var(--bg-elevated);
+  }
+
+  .bubble-actions-reply {
+    color: var(--accent);
+    font-weight: 700;
+    border-left: 1px solid var(--border) !important;
+    border-radius: 0 999px 999px 0 !important;
   }
 
   .msg-avatar,

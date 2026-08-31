@@ -614,14 +614,12 @@ export default function Chat() {
               )}
               </div>
               <span className="bubble-actions">
-                <button
-                  type="button"
-                  aria-label="React"
-                  onClick={() => setReactingId((cur) => (cur === message.id ? null : message.id))}
-                >
-                  😊
-                </button>
-                <button type="button" aria-label="Reply" onClick={() => startReply(message)}>
+                {QUICK_REACTIONS.map((emoji) => (
+                  <button key={emoji} type="button" onClick={() => toggleReaction(message, emoji)}>
+                    {emoji}
+                  </button>
+                ))}
+                <button type="button" className="bubble-actions-reply" aria-label="Reply" onClick={() => startReply(message)}>
                   ↩
                 </button>
               </span>
