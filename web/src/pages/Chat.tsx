@@ -46,6 +46,7 @@ export default function Chat() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
 
   const participantNames = useMemo(() => {
     const map = new Map<number, string>();
@@ -99,6 +100,12 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
+
+  // Keep the composer focused: on entering the chat, and again the moment a
+  // send finishes — the input is disabled while sending, which drops focus.
+  useEffect(() => {
+    if (!loading && !sending) composerRef.current?.focus();
+  }, [loading, sending]);
 
   // closeViewer() already revokes the blob URL on an explicit close, but
   // navigating away (unmount) while the viewer is still open would leak it
@@ -243,6 +250,7 @@ export default function Chat() {
         </button>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" capture hidden onChange={handleFileChange} />
         <input
+          ref={composerRef}
           className="composer-input"
           value={text}
           onChange={(event) => setText(event.target.value)}
