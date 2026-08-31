@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
   avatarUrl,
@@ -62,6 +62,7 @@ export default function Chat() {
   const meId = user?.id ?? -1;
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export default function Chat() {
   const loadConversationMeta = useCallback(async () => {
     try {
       const list = await getConversations();
+      setAllConversations(list);
       setConversation(list.find((c) => c.id === conversationId) ?? null);
     } catch {
       // header falls back to a generic title if this fails
@@ -413,10 +415,66 @@ export default function Chat() {
     // every recipient has viewed it and the server deleted the message).
     loadMessages();
   }
+  const sidebarRows = useMemo(
+    () =>
+      [...allConversations].sort((a, b) => {
+        const ta = a.last_message?.created_at ?? a.created_at;
+        const tb = b.last_message?.created_at ?? b.created_at;
+        return tb - ta;
+      }),
+    [allConversations],
+  );
+
+  function rowTitle(c: Conversation) {
+    if (c.is_group) return c.name ?? 'Group chat';
+    const other = c.participants.find((p) => p.id !== meId);
+    return other ? (other.display_name || other.username) : 'Unknown';
+  }
+
+  function rowPreview(c: Conversation) {
+    const lm = c.last_message;
+    if (!lm) return 'No messages yet';
+    if (lm.kind === 'image') return '📷 Photo';
+    if (lm.kind === 'video') return '🎥 Video';
+    return lm.body ?? '';
+  }
+
+  function rowAvatar(c: Conversation) {
+    if (c.is_group) return null;
+    const other = c.participants.find((p) => p.id !== meId);
+    return other ? avatarUrl(other.id, other.avatar_at) : null;
+  }
+
 
   const title = conversationTitle(conversation, meId);
 
   return (
+    <div className="chat-layout">
+      <aside className="chat-sidebar">
+        <div className="chat-sidebar-head">
+          <Link to="/" className="icon-button" aria-label="Home">🏠</Link>
+          <span className="chat-sidebar-title">Đoạn chat</span>
+        </div>
+        <div className="chat-sidebar-list">
+          {sidebarRows.map((c) => (
+            <Link
+              key={c.id}
+              to={`/chat/${c.id}`}
+              className={`conversation-row${c.id === conversationId ? ' conversation-row--active' : ''}`}
+            >
+              <span className="conversation-avatar">
+                {rowAvatar(c)
+                  ? <img className="avatar-img" src={rowAvatar(c)!} alt="" />
+                  : rowTitle(c).charAt(0).toUpperCase()}
+              </span>
+              <span className="conversation-body">
+                <span className="conversation-title">{rowTitle(c)}</span>
+                <span className="conversation-preview">{rowPreview(c)}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </aside>
     <div className="chat-page">
       <header className="chat-header">
         <button type="button" className="icon-button" onClick={() => navigate('/')} aria-label="Back">
@@ -696,6 +754,7 @@ export default function Chat() {
           {viewerError}
         </div>
       )}
+    </div>
     </div>
   );
 }
