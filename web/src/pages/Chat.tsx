@@ -100,6 +100,7 @@ export default function Chat() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
 
   const participantNames = useMemo(() => {
@@ -158,9 +159,25 @@ export default function Chat() {
     };
   }, [conversationId, loadMessages]);
 
+  const scrollToBottom = useCallback(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+    else bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, []);
+
+  // Late-loading embeds (gifs/stickers) grow the list after the initial
+  // scroll — follow the bottom only if the user is already near it.
+  const scrollIfNearBottom = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    if (list.scrollHeight - list.scrollTop - list.clientHeight < 240) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   // Live reaction updates arrive with neutral counts; recompute my own flag.
   useEffect(() => {
@@ -524,7 +541,7 @@ export default function Chat() {
         <h1>{title}</h1>
       </header>
 
-      <div className="message-list">
+      <div className="message-list" ref={listRef}>
         {loading && <p className="muted-note">Loading messages…</p>}
         {!loading && error && <p className="inline-error">{error}</p>}
         {!loading && messages.length === 0 && !error && (
@@ -568,9 +585,9 @@ export default function Chat() {
                 )}
                 {message.kind === 'text' &&
                   (IMAGE_URL_RE.test(message.body ?? '') ? (
-                    <img className="bubble-img" src={message.body!} alt="" loading="lazy" />
+                    <img className="bubble-img" src={message.body!} alt="" loading="lazy" onLoad={scrollIfNearBottom} />
                   ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] ? (
-                    <img className="bubble-img" src={resolvedEmbeds[message.body!]!} alt="" loading="lazy" />
+                    <img className="bubble-img" src={resolvedEmbeds[message.body!]!} alt="" loading="lazy" onLoad={scrollIfNearBottom} />
                   ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] === undefined ? (
                     <div className="bubble-text bubble-text--loading">Đang tải GIF…</div>
                   ) : (
