@@ -1458,6 +1458,17 @@ a {
 
 /* ---------- Farm game entry ---------- */
 
-.chat-sidebar-head .farm-link { margin-left: auto; text-decoration: none; }
+/* One shared look everywhere: a little grass-green chip so the game entry
+   pops out of the monochrome icon row. */
+.farm-link {
+  text-decoration: none;
+  background: linear-gradient(135deg, #d9f7b8 0%, #8fd14f 100%);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(90, 166, 58, 0.4);
+}
+.farm-link:hover { filter: brightness(1.05); }
+.chat-sidebar-head .farm-link { margin-left: auto; }
+.chat-header .farm-link { margin-left: auto; flex-shrink: 0; }
+.chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }

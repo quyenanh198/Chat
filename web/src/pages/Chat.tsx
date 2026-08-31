@@ -565,6 +565,16 @@ export default function Chat() {
           })()}
         </span>
         <h1>{title}</h1>
+        <a
+          className="icon-button farm-link"
+          href="/farm/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Nông trại vui vẻ"
+          title="Nông trại vui vẻ"
+        >
+          🌾
+        </a>
       </header>
 
       <div className="message-list" ref={listRef}>
