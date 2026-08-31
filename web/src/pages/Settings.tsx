@@ -14,6 +14,11 @@ export default function Settings() {
   const [modeError, setModeError] = useState<string | null>(null);
   const [savingMode, setSavingMode] = useState(false);
 
+  const [displayName, setDisplayName] = useState(user?.display_name ?? user?.username ?? '');
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameSaved, setNameSaved] = useState(false);
+
   const [notifState, setNotifState] = useState<NotifState>('unknown');
   const [enablingNotifs, setEnablingNotifs] = useState(false);
   const [notifError, setNotifError] = useState<string | null>(null);
@@ -49,6 +54,22 @@ export default function Settings() {
       setModeError(err instanceof ApiError ? err.message : 'Failed to update setting');
     } finally {
       setSavingMode(false);
+    }
+  }
+
+  async function handleSaveDisplayName() {
+    setSavingName(true);
+    setNameError(null);
+    setNameSaved(false);
+    try {
+      const { user: updated } = await api.updateProfile(displayName);
+      setUser(updated);
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 3000);
+    } catch (err) {
+      setNameError(err instanceof ApiError ? err.message : 'Failed to save name');
+    } finally {
+      setSavingName(false);
     }
   }
 
@@ -109,6 +130,24 @@ export default function Settings() {
         </button>
         <h1>Settings</h1>
       </header>
+
+      <section className="settings-section">
+        <h2>Display name</h2>
+        <p className="muted-note">Shown to others in chats and stories. Your login username ({user.username}) stays the same.</p>
+        <div className="invite-code-row">
+          <input
+            className="group-name-input"
+            value={displayName}
+            maxLength={40}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={user.username}
+          />
+          <button type="button" className="primary-button" onClick={handleSaveDisplayName} disabled={savingName}>
+            {savingName ? 'Saving…' : nameSaved ? 'Saved ✓' : 'Save'}
+          </button>
+        </div>
+        {nameError && <p className="inline-error">{nameError}</p>}
+      </section>
 
       <section className="settings-section">
         <h2>Media default</h2>

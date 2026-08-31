@@ -142,7 +142,7 @@ export default function Story() {
       </div>
 
       <div className="story-header">
-        <span className="story-header-name">{storyUser.username}</span>
+        <span className="story-header-name">{storyUser.display_name || storyUser.username}</span>
         <button type="button" className="story-close" onClick={close} aria-label="Close">
           ✕
         </button>

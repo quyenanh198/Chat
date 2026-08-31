@@ -20,7 +20,8 @@ function otherParticipant(conversation: Conversation, meId: number): Participant
 
 function conversationTitle(conversation: Conversation, meId: number): string {
   if (conversation.is_group) return conversation.name ?? 'Group chat';
-  return otherParticipant(conversation, meId)?.username ?? 'Unknown';
+  const other = otherParticipant(conversation, meId);
+  return other ? (other.display_name || other.username) : 'Unknown';
 }
 
 function lastMessagePreview(conversation: Conversation): string {
@@ -202,8 +203,8 @@ export default function Home() {
               to={`/story/${group.user.id}`}
               className={`story-item${hasUnviewed ? ' story-item--unviewed' : ''}`}
             >
-              <span className="story-avatar">{initialLetter(group.user.username)}</span>
-              <span className="story-label">{isSelf ? 'You' : group.user.username}</span>
+              <span className="story-avatar">{initialLetter(group.user.display_name || group.user.username)}</span>
+              <span className="story-label">{isSelf ? 'You' : (group.user.display_name || group.user.username)}</span>
             </Link>
           );
         })}
@@ -249,7 +250,7 @@ export default function Home() {
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => toggleUser(candidate.id)}
                     />
-                    {candidate.username}
+                    {candidate.display_name || candidate.username}
                   </label>
                 </li>
               ))}

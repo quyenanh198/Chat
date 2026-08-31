@@ -50,7 +50,7 @@ export async function registerStoryRoutes(app) {
 
     const rows = db
       .prepare(
-        `SELECT s.id, s.user_id, s.kind, s.created_at, u.username
+        `SELECT s.id, s.user_id, s.kind, s.created_at, u.username, u.display_name
          FROM stories s
          JOIN users u ON u.id = s.user_id
          WHERE s.expires_at > ?
@@ -63,7 +63,7 @@ export async function registerStoryRoutes(app) {
     const groups = new Map();
     for (const row of rows) {
       if (!groups.has(row.user_id)) {
-        groups.set(row.user_id, { user: { id: row.user_id, username: row.username }, stories: [] });
+        groups.set(row.user_id, { user: { id: row.user_id, username: row.username, display_name: row.display_name || row.username }, stories: [] });
       }
       groups.get(row.user_id).stories.push({
         id: row.id,

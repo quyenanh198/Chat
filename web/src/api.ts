@@ -12,6 +12,7 @@
 export interface User {
   id: number;
   username: string;
+  display_name?: string;
   is_admin: boolean;
   media_mode: 'once' | '24h';
 }
@@ -19,6 +20,7 @@ export interface User {
 export interface Participant {
   id: number;
   username: string;
+  display_name?: string;
 }
 
 export interface LastMessage {
@@ -145,6 +147,10 @@ export const api = {
 };
 
 // --- Convenience wrappers for the routes the frontend calls ---
+
+export function updateProfile(display_name: string): Promise<{ user: User }> {
+  return api.patch('/api/me/profile', { display_name });
+}
 
 export function login(username: string, password: string): Promise<{ user: User }> {
   return api.post('/api/auth/login', { username, password });

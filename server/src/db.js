@@ -22,5 +22,11 @@ export function createDb(dataDir) {
   const schema = readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema);
 
+  // Lightweight migration for DBs created before display_name existed.
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userCols.includes('display_name')) {
+    db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+  }
+
   return { db, mediaDir };
 }

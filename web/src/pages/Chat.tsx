@@ -21,7 +21,8 @@ interface MediaViewerState {
 function conversationTitle(conversation: Conversation | null, meId: number): string {
   if (!conversation) return 'Chat';
   if (conversation.is_group) return conversation.name ?? 'Group chat';
-  return conversation.participants.find((p) => p.id !== meId)?.username ?? 'Unknown';
+  const other = conversation.participants.find((p) => p.id !== meId);
+  return other ? (other.display_name || other.username) : 'Unknown';
 }
 
 export default function Chat() {
@@ -48,7 +49,7 @@ export default function Chat() {
 
   const participantNames = useMemo(() => {
     const map = new Map<number, string>();
-    conversation?.participants.forEach((p) => map.set(p.id, p.username));
+    conversation?.participants.forEach((p) => map.set(p.id, p.display_name || p.username));
     return map;
   }, [conversation]);
 
