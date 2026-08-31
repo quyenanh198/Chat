@@ -30,6 +30,10 @@ export function createDb(dataDir) {
   if (!userCols.includes('avatar_at')) {
     db.exec('ALTER TABLE users ADD COLUMN avatar_at INTEGER');
   }
+  const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
+  if (!msgCols.includes('reply_to')) {
+    db.exec('ALTER TABLE messages ADD COLUMN reply_to INTEGER');
+  }
 
   return { db, mediaDir };
 }

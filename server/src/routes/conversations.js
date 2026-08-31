@@ -60,6 +60,25 @@ function serializeConversation(db, conversation, now) {
   };
 }
 
+// Builds {messageId -> reply snippet} for messages that reference an earlier one.
+function replySnippets(db, messages) {
+  const ids = [...new Set(messages.map((m) => m.reply_to).filter(Boolean))];
+  const out = new Map();
+  if (ids.length === 0) return out;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT m.id, m.kind, m.body, COALESCE(u.display_name, u.username) AS sender_name
+       FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id IN (${placeholders})`,
+    )
+    .all(...ids);
+  for (const r of rows) {
+    const snippet = r.kind === 'image' ? '📷 Photo' : r.kind === 'video' ? '🎥 Video' : (r.body ?? '').slice(0, 90);
+    out.set(r.id, { id: r.id, sender_name: r.sender_name, snippet });
+  }
+  return out;
+}
+
 // Aggregates reactions for a set of message ids as [{emoji, count, mine}] per message.
 function reactionsByMessage(db, messageIds, meId) {
   const out = new Map();
@@ -198,7 +217,7 @@ export async function registerConversationRoutes(app) {
     const now = Date.now();
     const messages = db
       .prepare(
-        `SELECT id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at
+        `SELECT id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at, reply_to
          FROM messages
          WHERE conversation_id = ? AND expires_at > ?
          ORDER BY created_at ASC, id ASC`,
@@ -209,9 +228,11 @@ export async function registerConversationRoutes(app) {
     // requesting user, computed from the self-destruct rules; text messages
     // are left untouched.
     const reactions = reactionsByMessage(db, messages.map((m) => m.id), request.user.id);
+    const replies = replySnippets(db, messages);
     const withFlags = messages.map((message) => ({
       ...(message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, request.user.id) }),
       reactions: reactions.get(message.id) ?? [],
+      reply: message.reply_to ? replies.get(message.reply_to) ?? null : null,
     }));
 
     return reply.send(withFlags);
@@ -284,25 +305,36 @@ export async function registerConversationRoutes(app) {
       return reply.code(403).send({ error: 'not_a_member' });
     }
 
-    const { body } = request.body ?? {};
+    const { body, reply_to } = request.body ?? {};
     if (typeof body !== 'string' || body.trim().length === 0) {
       return reply.code(400).send({ error: 'body_required' });
+    }
+    let replyTo = null;
+    if (reply_to !== undefined && reply_to !== null) {
+      replyTo = Number(reply_to);
+      const target = Number.isInteger(replyTo)
+        ? db.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?').get(replyTo, conversationId)
+        : null;
+      if (!target) {
+        return reply.code(400).send({ error: 'invalid_reply_to' });
+      }
     }
 
     const now = Date.now();
     const expiresAt = now + TEXT_TTL_MS;
     const info = db
       .prepare(
-        `INSERT INTO messages (conversation_id, sender_id, kind, body, created_at, expires_at)
-         VALUES (?, ?, 'text', ?, ?, ?)`,
+        `INSERT INTO messages (conversation_id, sender_id, kind, body, created_at, expires_at, reply_to)
+         VALUES (?, ?, 'text', ?, ?, ?, ?)`,
       )
-      .run(conversationId, request.user.id, body, now, expiresAt);
+      .run(conversationId, request.user.id, body, now, expiresAt, replyTo);
 
     const message = db
       .prepare(
-        'SELECT id, conversation_id, sender_id, kind, body, created_at, expires_at FROM messages WHERE id = ?',
+        'SELECT id, conversation_id, sender_id, kind, body, created_at, expires_at, reply_to FROM messages WHERE id = ?',
       )
       .get(info.lastInsertRowid);
+    message.reply = message.reply_to ? replySnippets(db, [message]).get(message.reply_to) ?? null : null;
 
     // Fire-and-forget: notifyNewMessage's WS fan-out is synchronous (already
     // done by the time this call returns), but its web-push fan-out is a

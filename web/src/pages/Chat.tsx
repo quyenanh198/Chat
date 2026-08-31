@@ -52,6 +52,7 @@ const MEME_PACKS: { label: string; q: string }[] = [
 
 const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 const EMOJI_PANEL = ['😀','😁','😂','🤣','😊','😍','😘','😜','🤔','😴','😭','😱','😡','🥳','🤗','👍','👎','👏','🙏','💪','🔥','✨','🎉','❤️','💔','😅','🙈','🤝','😷','🤯','😇','🥰','😋','🤤','🍜','⚡'];
+const PAGE_GIF_RE = /^https?:\/\/(www\.)?(giphy\.com\/gifs\/|tenor\.com\/view\/)\S+$/i;
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(gif|png|jpe?g|webp)(\?\S*)?$/i;
 
 export default function Chat() {
@@ -83,6 +84,10 @@ export default function Chat() {
   const [gifQuery, setGifQuery] = useState('');
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifStatus, setGifStatus] = useState<string | null>(null);
+  const [resolvedEmbeds, setResolvedEmbeds] = useState<Record<string, string | null>>({});
+  const [replyTarget, setReplyTarget] = useState<{ id: number; name: string; snippet: string } | null>(null);
+  const resolvingRef = useRef<Set<string>>(new Set());
+
   const [recentGifs, setRecentGifs] = useState<GifResult[]>(() => {
     try { return JSON.parse(localStorage.getItem('chat.recentGifs') || '[]'); } catch { return []; }
   });
@@ -183,6 +188,20 @@ export default function Chat() {
   }, [conversationId, meId]);
 
 
+  // Resolve pasted giphy/tenor page links to direct media (server og:image).
+  useEffect(() => {
+    for (const m of messages) {
+      const body = m.kind === 'text' ? (m.body ?? '') : '';
+      if (!PAGE_GIF_RE.test(body)) continue;
+      if (body in resolvedEmbeds || resolvingRef.current.has(body)) continue;
+      resolvingRef.current.add(body);
+      fetch(`/api/embed/resolve?url=${encodeURIComponent(body)}`)
+        .then((r) => (r.ok ? r.json() : { url: null }))
+        .then(({ url }) => setResolvedEmbeds((prev) => ({ ...prev, [body]: url ?? null })))
+        .catch(() => setResolvedEmbeds((prev) => ({ ...prev, [body]: null })));
+    }
+  }, [messages, resolvedEmbeds]);
+
   // Keep the composer focused: on entering the chat, and again the moment a
   // send finishes — the input is disabled while sending, which drops focus.
   useEffect(() => {
@@ -202,6 +221,14 @@ export default function Chat() {
     };
   }, []);
 
+  function startReply(message: Message) {
+    setReactingId(null);
+    const name = participantNames.get(message.sender_id) ?? '';
+    const snippet = message.kind === 'image' ? '📷 Photo' : message.kind === 'video' ? '🎥 Video' : (message.body ?? '').slice(0, 90);
+    setReplyTarget({ id: message.id, name, snippet });
+    composerRef.current?.focus();
+  }
+
   async function toggleReaction(message: Message, emoji: string) {
     setReactingId(null);
     const already = message.reactions?.some((r) => r.mine && r.emoji === emoji);
@@ -219,9 +246,10 @@ export default function Chat() {
     if (!body || sending) return;
     setSending(true);
     try {
-      const message = await sendMessage(conversationId, body);
+      const message = await sendMessage(conversationId, body, replyTarget?.id);
       setMessages((prev) => [...prev, message]);
       setText('');
+      setReplyTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send message');
     } finally {
@@ -520,6 +548,7 @@ export default function Chat() {
                         {emoji}
                       </button>
                     ))}
+                    <button type="button" className="react-reply" onClick={() => startReply(message)}>↩</button>
                   </div>
                 )}
               <div
@@ -529,9 +558,19 @@ export default function Chat() {
                 {conversation?.is_group && !isMine && senderName && (
                   <div className="bubble-sender">{senderName}</div>
                 )}
+                {message.reply && (
+                  <div className="bubble-quote">
+                    <span className="bubble-quote-name">{message.reply.sender_name}</span>
+                    <span className="bubble-quote-text">{message.reply.snippet}</span>
+                  </div>
+                )}
                 {message.kind === 'text' &&
                   (IMAGE_URL_RE.test(message.body ?? '') ? (
                     <img className="bubble-img" src={message.body!} alt="" loading="lazy" />
+                  ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] ? (
+                    <img className="bubble-img" src={resolvedEmbeds[message.body!]!} alt="" loading="lazy" />
+                  ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] === undefined ? (
+                    <div className="bubble-text bubble-text--loading">Đang tải GIF…</div>
                   ) : (
                     <div className="bubble-text">{message.body}</div>
                   ))}
@@ -580,6 +619,84 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {replyTarget && (
+        <div className="reply-strip">
+          <div className="reply-strip-body">
+            <span className="bubble-quote-name">Trả lời {replyTarget.name}</span>
+            <span className="bubble-quote-text">{replyTarget.snippet}</span>
+          </div>
+          <button type="button" className="icon-button" onClick={() => setReplyTarget(null)} aria-label="Huỷ trả lời">✕</button>
+        </div>
+      )}
+      <form className="composer" onSubmit={handleSendText}>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending}
+          aria-label="Send photo or video"
+        >
+          📷
+        </button>
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" capture hidden onChange={handleFileChange} />
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => { setShowEmoji((v) => !v); setShowGif(false); setShowMeme(false); }}
+          aria-label="Emoji"
+        >
+          😊
+        </button>
+        <button
+          type="button"
+          className="icon-button gif-button"
+          onClick={openGifPanel}
+          aria-label="GIF"
+        >
+          GIF
+        </button>
+        <button type="button" className="icon-button" onClick={openMemePanel} aria-label="Meme sticker">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8l-6 6H6a2 2 0 0 1-2-2V6Z" />
+            <path d="M14 20v-4a2 2 0 0 1 2-2h4" />
+            <circle cx="9" cy="10" r="0.6" fill="currentColor" />
+            <circle cx="15" cy="10" r="0.6" fill="currentColor" />
+            <path d="M9 13.5c.8.9 1.8 1.4 3 1.4" />
+          </svg>
+        </button>
+        <input
+          ref={composerRef}
+          className="composer-input"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onPaste={handlePaste}
+          placeholder="Message"
+          disabled={sending}
+        />
+        <button type="submit" disabled={sending || text.trim().length === 0}>
+          Send
+        </button>
+      </form>
+
+      {viewer && (
+        <div className="media-viewer-overlay" onClick={closeViewer}>
+          <button type="button" className="media-viewer-close" onClick={closeViewer} aria-label="Close">
+            ✕
+          </button>
+          {viewer.message.kind === 'video' ? (
+            <video src={viewer.url} controls autoPlay onClick={(event) => event.stopPropagation()} />
+          ) : (
+            <img src={viewer.url} alt="" onClick={(event) => event.stopPropagation()} />
+          )}
+        </div>
+      )}
+      {viewerError && (
+        <div className="toast toast--error" onClick={() => setViewerError(null)}>
+          {viewerError}
+        </div>
+      )}
+    </div>
+      <aside className="chat-panel-col">
       {showMeme && (
         <div className="gif-panel">
           {recentGifs.length > 0 && (
@@ -687,74 +804,7 @@ export default function Chat() {
           ))}
         </div>
       )}
-      <form className="composer" onSubmit={handleSendText}>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={sending}
-          aria-label="Send photo or video"
-        >
-          📷
-        </button>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" capture hidden onChange={handleFileChange} />
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => { setShowEmoji((v) => !v); setShowGif(false); setShowMeme(false); }}
-          aria-label="Emoji"
-        >
-          😊
-        </button>
-        <button
-          type="button"
-          className="icon-button gif-button"
-          onClick={openGifPanel}
-          aria-label="GIF"
-        >
-          GIF
-        </button>
-        <button type="button" className="icon-button" onClick={openMemePanel} aria-label="Meme sticker">
-          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8l-6 6H6a2 2 0 0 1-2-2V6Z" />
-            <path d="M14 20v-4a2 2 0 0 1 2-2h4" />
-            <circle cx="9" cy="10" r="0.6" fill="currentColor" />
-            <circle cx="15" cy="10" r="0.6" fill="currentColor" />
-            <path d="M9 13.5c.8.9 1.8 1.4 3 1.4" />
-          </svg>
-        </button>
-        <input
-          ref={composerRef}
-          className="composer-input"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onPaste={handlePaste}
-          placeholder="Message"
-          disabled={sending}
-        />
-        <button type="submit" disabled={sending || text.trim().length === 0}>
-          Send
-        </button>
-      </form>
-
-      {viewer && (
-        <div className="media-viewer-overlay" onClick={closeViewer}>
-          <button type="button" className="media-viewer-close" onClick={closeViewer} aria-label="Close">
-            ✕
-          </button>
-          {viewer.message.kind === 'video' ? (
-            <video src={viewer.url} controls autoPlay onClick={(event) => event.stopPropagation()} />
-          ) : (
-            <img src={viewer.url} alt="" onClick={(event) => event.stopPropagation()} />
-          )}
-        </div>
-      )}
-      {viewerError && (
-        <div className="toast toast--error" onClick={() => setViewerError(null)}>
-          {viewerError}
-        </div>
-      )}
-    </div>
+      </aside>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { registerUsersRoutes } from './routes/users.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerGifRoutes } from './routes/gif.js';
 import { registerStickerRoutes } from './routes/stickers.js';
+import { registerEmbedRoutes } from './routes/embed.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerMediaRoutes } from './routes/media.js';
 import { registerStoryRoutes } from './routes/stories.js';
@@ -177,6 +178,7 @@ export function buildApp({
       await registerInviteRoutes(api);
       await registerGifRoutes(api);
       await registerStickerRoutes(api);
+      await registerEmbedRoutes(api);
       await registerConversationRoutes(api);
       await registerMediaRoutes(api);
       await registerStoryRoutes(api);

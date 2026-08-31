@@ -45,6 +45,7 @@ export interface Conversation {
 
 export interface Message {
   reactions?: Reaction[];
+  reply?: { id: number; sender_name: string; snippet: string } | null;
   id: number;
   conversation_id: number;
   sender_id: number;
@@ -235,8 +236,8 @@ export function setReaction(conversationId: number, messageId: number, emoji: st
   return api.post(`/api/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji });
 }
 
-export function sendMessage(conversationId: number, body: string): Promise<Message> {
-  return api.post(`/api/conversations/${conversationId}/messages`, { body });
+export function sendMessage(conversationId: number, body: string, replyTo?: number): Promise<Message> {
+  return api.post(`/api/conversations/${conversationId}/messages`, { body, reply_to: replyTo });
 }
 
 export function sendMedia(conversationId: number, file: Blob): Promise<Message> {
