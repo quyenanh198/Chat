@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerUsersRoutes } from './routes/users.js';
 import { registerInviteRoutes } from './routes/invites.js';
+import { registerGifRoutes } from './routes/gif.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { registerMediaRoutes } from './routes/media.js';
 import { registerStoryRoutes } from './routes/stories.js';
@@ -173,6 +174,7 @@ export function buildApp({
       await registerMeRoutes(api);
       await registerUsersRoutes(api);
       await registerInviteRoutes(api);
+      await registerGifRoutes(api);
       await registerConversationRoutes(api);
       await registerMediaRoutes(api);
       await registerStoryRoutes(api);

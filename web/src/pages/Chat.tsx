@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  searchGifs,
   setReaction,
+  type GifResult,
   getConversations,
   getMessages,
   sendMedia,
@@ -46,6 +48,10 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [reactingId, setReactingId] = useState<number | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [showGif, setShowGif] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState<GifResult[]>([]);
+  const [gifStatus, setGifStatus] = useState<string | null>(null);
 
   const [viewer, setViewer] = useState<MediaViewerState | null>(null);
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -215,6 +221,40 @@ export default function Chat() {
     }
   }
 
+  async function runGifSearch() {
+    const q = gifQuery.trim();
+    if (!q) return;
+    setGifStatus('Đang tìm…');
+    setGifResults([]);
+    try {
+      const { results } = await searchGifs(q);
+      setGifResults(results);
+      setGifStatus(results.length ? null : 'Không thấy GIF nào.');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '';
+      setGifStatus(
+        msg === 'gif_disabled'
+          ? 'Chưa bật GIF search — thêm GIF_TENOR_KEY (Tenor API) vào server. Vẫn dán được link GIF vào ô chat.'
+          : 'Tìm GIF thất bại, thử lại.',
+      );
+    }
+  }
+
+  async function sendGif(gif: GifResult) {
+    setShowGif(false);
+    setGifResults([]);
+    setGifQuery('');
+    setSending(true);
+    try {
+      const message = await sendMessage(conversationId, gif.url);
+      setMessages((prev) => [...prev, message]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to send GIF');
+    } finally {
+      setSending(false);
+    }
+  }
+
   function insertEmoji(emoji: string) {
     const input = composerRef.current;
     if (!input) {
@@ -345,6 +385,28 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {showGif && (
+        <div className="gif-panel">
+          <div className="gif-search-row">
+            <input
+              className="composer-input"
+              value={gifQuery}
+              onChange={(e) => setGifQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runGifSearch(); } }}
+              placeholder="Tìm GIF (mèo, haha, chúc mừng…)"
+            />
+            <button type="button" className="primary-button" onClick={runGifSearch}>Tìm</button>
+          </div>
+          {gifStatus && <p className="muted-note">{gifStatus}</p>}
+          <div className="gif-grid">
+            {gifResults.map((gif) => (
+              <button key={gif.id} type="button" onClick={() => sendGif(gif)}>
+                <img src={gif.preview} alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {showEmoji && (
         <div className="emoji-panel">
           {EMOJI_PANEL.map((emoji) => (
@@ -368,10 +430,18 @@ export default function Chat() {
         <button
           type="button"
           className="icon-button"
-          onClick={() => setShowEmoji((v) => !v)}
+          onClick={() => { setShowEmoji((v) => !v); setShowGif(false); }}
           aria-label="Emoji"
         >
           😊
+        </button>
+        <button
+          type="button"
+          className="icon-button gif-button"
+          onClick={() => { setShowGif((v) => !v); setShowEmoji(false); }}
+          aria-label="GIF"
+        >
+          GIF
         </button>
         <input
           ref={composerRef}

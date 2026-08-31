@@ -7,7 +7,7 @@ const TEXT_TTL_MS = 24 * 60 * 60 * 1000; // text messages expire 24h after send
 function getParticipants(db, conversationId) {
   return db
     .prepare(
-      `SELECT u.id, u.username, u.display_name FROM participants p
+      `SELECT u.id, u.username, u.display_name, u.avatar_at FROM participants p
        JOIN users u ON u.id = p.user_id
        WHERE p.conversation_id = ?
        ORDER BY u.id`,

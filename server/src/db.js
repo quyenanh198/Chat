@@ -27,6 +27,9 @@ export function createDb(dataDir) {
   if (!userCols.includes('display_name')) {
     db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
   }
+  if (!userCols.includes('avatar_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN avatar_at INTEGER');
+  }
 
   return { db, mediaDir };
 }

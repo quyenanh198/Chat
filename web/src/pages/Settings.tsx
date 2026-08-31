@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../api';
+import { avatarUrl, uploadAvatar } from '../api';
 import { ApiError, createInvite, logout, updateSettings, type User } from '../api';
 import { useAuth } from '../AuthContext';
 import { ensurePushSubscription } from '../sw-register';
@@ -13,6 +14,10 @@ export default function Settings() {
 
   const [modeError, setModeError] = useState<string | null>(null);
   const [savingMode, setSavingMode] = useState(false);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? user?.username ?? '');
   const [savingName, setSavingName] = useState(false);
@@ -54,6 +59,20 @@ export default function Settings() {
       setModeError(err instanceof ApiError ? err.message : 'Failed to update setting');
     } finally {
       setSavingMode(false);
+    }
+  }
+
+  async function handleAvatarPick(file: File | undefined) {
+    if (!file) return;
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      const { user: updated } = await uploadAvatar(file);
+      setUser(updated);
+    } catch (err) {
+      setAvatarError(err instanceof ApiError ? err.message : 'Failed to upload avatar');
+    } finally {
+      setAvatarBusy(false);
     }
   }
 
@@ -130,6 +149,24 @@ export default function Settings() {
         </button>
         <h1>Settings</h1>
       </header>
+
+      <section className="settings-section">
+        <h2>Avatar</h2>
+        <div className="invite-code-row">
+          <span className="conversation-avatar">
+            {avatarUrl(user.id, user.avatar_at)
+              ? <img className="avatar-img" src={avatarUrl(user.id, user.avatar_at)!} alt="" />
+              : (user.display_name || user.username).charAt(0).toUpperCase()}
+          </span>
+          <input ref={avatarInputRef} type="file" accept="image/*" hidden
+            onChange={(e) => handleAvatarPick(e.target.files?.[0])} />
+          <button type="button" className="primary-button" disabled={avatarBusy}
+            onClick={() => avatarInputRef.current?.click()}>
+            {avatarBusy ? 'Uploading…' : 'Change avatar'}
+          </button>
+        </div>
+        {avatarError && <p className="inline-error">{avatarError}</p>}
+      </section>
 
       <section className="settings-section">
         <h2>Display name</h2>

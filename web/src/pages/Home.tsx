@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ApiError,
+  avatarUrl,
   createConversation,
   getConversations,
   getStories,
@@ -203,7 +204,11 @@ export default function Home() {
               to={`/story/${group.user.id}`}
               className={`story-item${hasUnviewed ? ' story-item--unviewed' : ''}`}
             >
-              <span className="story-avatar">{initialLetter(group.user.display_name || group.user.username)}</span>
+              <span className="story-avatar">
+                {avatarUrl(group.user.id, group.user.avatar_at)
+                  ? <img className="avatar-img" src={avatarUrl(group.user.id, group.user.avatar_at)!} alt="" />
+                  : initialLetter(group.user.display_name || group.user.username)}
+              </span>
               <span className="story-label">{isSelf ? 'You' : (group.user.display_name || group.user.username)}</span>
             </Link>
           );
@@ -219,9 +224,13 @@ export default function Home() {
         )}
         {sortedConversations.map((conversation) => {
           const title = conversationTitle(conversation, meId);
+          const other = conversation.is_group ? null : otherParticipant(conversation, meId);
+          const convAvatar = other ? avatarUrl(other.id, other.avatar_at) : null;
           return (
             <Link key={conversation.id} to={`/chat/${conversation.id}`} className="conversation-row">
-              <span className="conversation-avatar">{initialLetter(title)}</span>
+              <span className="conversation-avatar">
+                {convAvatar ? <img className="avatar-img" src={convAvatar} alt="" /> : initialLetter(title)}
+              </span>
               <span className="conversation-body">
                 <span className="conversation-title">{title}</span>
                 <span className="conversation-preview">{lastMessagePreview(conversation)}</span>

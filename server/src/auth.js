@@ -59,6 +59,7 @@ export function serializeUser(user) {
     username: user.username,
     is_admin: !!user.is_admin,
     display_name: user.display_name || user.username,
+    avatar_at: user.avatar_at || null,
     media_mode: user.media_mode,
   };
 }
@@ -82,7 +83,7 @@ export async function requireUser(request, reply) {
 
   const userId = Number(payload.sub);
   const user = request.server.db
-    .prepare('SELECT id, username, display_name, is_admin, media_mode FROM users WHERE id = ?')
+    .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode FROM users WHERE id = ?')
     .get(userId);
   if (!user) {
     return reply.code(401).send({ error: 'unauthorized' });

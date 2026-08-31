@@ -13,6 +13,7 @@ export interface User {
   id: number;
   username: string;
   display_name?: string;
+  avatar_at?: number | null;
   is_admin: boolean;
   media_mode: 'once' | '24h';
 }
@@ -21,6 +22,7 @@ export interface Participant {
   id: number;
   username: string;
   display_name?: string;
+  avatar_at?: number | null;
 }
 
 export interface LastMessage {
@@ -195,6 +197,16 @@ export interface Reaction {
   mine?: boolean;
 }
 
+export interface GifResult {
+  id: string;
+  preview: string;
+  url: string;
+}
+
+export function searchGifs(q: string): Promise<{ results: GifResult[] }> {
+  return api.get(`/api/gif/search?q=${encodeURIComponent(q)}`);
+}
+
 export function setReaction(conversationId: number, messageId: number, emoji: string): Promise<{ ok: boolean; reactions: Reaction[] }> {
   return api.post(`/api/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji });
 }
@@ -205,6 +217,14 @@ export function sendMessage(conversationId: number, body: string): Promise<Messa
 
 export function sendMedia(conversationId: number, file: Blob): Promise<Message> {
   return api.upload(`/api/conversations/${conversationId}/media`, file);
+}
+
+export function uploadAvatar(file: Blob): Promise<{ user: User }> {
+  return api.upload('/api/me/avatar', file);
+}
+
+export function avatarUrl(id: number, avatarAt?: number | null): string | null {
+  return avatarAt ? `/api/users/${id}/avatar?v=${avatarAt}` : null;
 }
 
 export function getStories(): Promise<StoryGroup[]> {
