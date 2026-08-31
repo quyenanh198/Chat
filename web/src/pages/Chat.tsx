@@ -3,6 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
   avatarUrl,
+  deleteSticker,
+  listStickers,
+  uploadSticker,
+  type CustomSticker,
   searchGifs,
   searchMemes,
   setReaction,
@@ -32,6 +36,7 @@ function conversationTitle(conversation: Conversation | null, meId: number): str
 
 // Các bộ sticker quen mặt với người Việt, đã kiểm tra có trên Giphy.
 const MEME_PACKS: { label: string; q: string }[] = [
+  { label: 'Nhà 🏠', q: '__custom__' },
   { label: 'Hot', q: '' },
   { label: 'Quby', q: 'quby' },
   { label: 'Mochi Cat', q: 'mochi mochi peach cat' },
@@ -71,6 +76,9 @@ export default function Chat() {
   const [memeResults, setMemeResults] = useState<GifResult[]>([]);
   const [memeStatus, setMemeStatus] = useState<string | null>(null);
   const [memePack, setMemePack] = useState('');
+  const [customStickers, setCustomStickers] = useState<CustomSticker[]>([]);
+  const [stickerBusy, setStickerBusy] = useState(false);
+  const stickerFileRef = useRef<HTMLInputElement>(null);
   const [gifQuery, setGifQuery] = useState('');
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
   const [gifStatus, setGifStatus] = useState<string | null>(null);
@@ -281,6 +289,42 @@ export default function Chat() {
     }
   }
 
+  async function loadCustomStickers() {
+    try {
+      const { results } = await listStickers();
+      setCustomStickers(results);
+      setMemeStatus(results.length ? null : 'Chưa có sticker nào — bấm ＋ để thêm.');
+    } catch {
+      setMemeStatus('Không tải được sticker.');
+    }
+  }
+
+  async function handleStickerUpload(file: File | undefined) {
+    if (!file) return;
+    setStickerBusy(true);
+    try {
+      await uploadSticker(file);
+      await loadCustomStickers();
+    } catch (err) {
+      setMemeStatus(err instanceof ApiError ? err.message : 'Thêm sticker thất bại');
+    } finally {
+      setStickerBusy(false);
+    }
+  }
+
+  async function handleStickerDelete(id: number) {
+    try {
+      await deleteSticker(id);
+      setCustomStickers((prev) => prev.filter((st) => st.id !== id));
+    } catch (err) {
+      setMemeStatus(err instanceof ApiError ? err.message : 'Xoá thất bại');
+    }
+  }
+
+  function sendCustomSticker(st: CustomSticker) {
+    void sendGif({ id: String(st.id), preview: st.url, url: `${location.origin}${st.url}` });
+  }
+
   function openMemePanel() {
     const next = !showMeme;
     setShowMeme(next);
@@ -461,7 +505,7 @@ export default function Chat() {
                 key={pack.label}
                 type="button"
                 className={`meme-pack-chip${memePack === pack.q ? ' meme-pack-chip--on' : ''}`}
-                onClick={() => { setMemePack(pack.q); setMemeQuery(''); void loadMemes(pack.q); }}
+                onClick={() => { setMemePack(pack.q); setMemeQuery(''); if (pack.q === '__custom__') { setMemeResults([]); void loadCustomStickers(); } else { void loadMemes(pack.q); } }}
               >
                 {pack.label}
               </button>
@@ -478,13 +522,35 @@ export default function Chat() {
             <button type="button" className="primary-button" onClick={() => { setMemePack('__search__'); loadMemes(memeQuery); }}>Tìm</button>
           </div>
           {memeStatus && <p className="muted-note">{memeStatus}</p>}
-          <div className="gif-grid gif-grid--memes">
-            {memeResults.map((m) => (
-              <button key={m.id} type="button" onClick={() => sendGif(m)}>
-                <img src={m.preview} alt="" loading="lazy" />
+          {memePack === '__custom__' ? (
+            <div className="gif-grid gif-grid--memes">
+              <button type="button" className="sticker-add" disabled={stickerBusy}
+                onClick={() => stickerFileRef.current?.click()}>
+                {stickerBusy ? '…' : '＋'}
               </button>
-            ))}
-          </div>
+              <input ref={stickerFileRef} type="file" accept="image/*" hidden
+                onChange={(e) => { handleStickerUpload(e.target.files?.[0]); e.target.value = ''; }} />
+              {customStickers.map((st) => (
+                <span key={st.id} className="sticker-cell">
+                  <button type="button" onClick={() => sendCustomSticker(st)}>
+                    <img src={st.url} alt="" loading="lazy" />
+                  </button>
+                  {st.mine && (
+                    <button type="button" className="sticker-del" aria-label="Xoá sticker"
+                      onClick={() => handleStickerDelete(st.id)}>✕</button>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="gif-grid gif-grid--memes">
+              {memeResults.map((m) => (
+                <button key={m.id} type="button" onClick={() => sendGif(m)}>
+                  <img src={m.preview} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {showGif && (

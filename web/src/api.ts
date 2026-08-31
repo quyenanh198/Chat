@@ -142,6 +142,7 @@ export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path, { method: 'GET' }),
   post: <T>(path: string, body?: unknown): Promise<T> => request<T>(path, jsonInit('POST', body)),
   patch: <T>(path: string, body?: unknown): Promise<T> => request<T>(path, jsonInit('PATCH', body)),
+  del: <T>(path: string): Promise<T> => request<T>(path, { method: 'DELETE' }),
   upload: <T>(path: string, file: Blob, fieldName = 'file'): Promise<T> => {
     const form = new FormData();
     form.append(fieldName, file);
@@ -209,6 +210,24 @@ export function searchGifs(q: string): Promise<{ results: GifResult[] }> {
 
 export function searchMemes(q: string): Promise<{ results: GifResult[] }> {
   return api.get(`/api/gif/memes${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+}
+
+export interface CustomSticker {
+  id: number;
+  url: string;
+  mine: boolean;
+}
+
+export function listStickers(): Promise<{ results: CustomSticker[] }> {
+  return api.get('/api/stickers');
+}
+
+export function uploadSticker(file: Blob): Promise<CustomSticker> {
+  return api.upload('/api/stickers', file);
+}
+
+export function deleteSticker(id: number): Promise<{ ok: boolean }> {
+  return api.del(`/api/stickers/${id}`);
 }
 
 export function setReaction(conversationId: number, messageId: number, emoji: string): Promise<{ ok: boolean; reactions: Reaction[] }> {

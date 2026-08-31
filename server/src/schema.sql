@@ -81,3 +81,10 @@ CREATE TABLE IF NOT EXISTS message_reactions (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (message_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS custom_stickers (
+  id INTEGER PRIMARY KEY,
+  uploader_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ext TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);

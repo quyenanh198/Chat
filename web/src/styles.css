@@ -1088,3 +1088,60 @@ a {
   border-color: var(--accent);
   color: #fff;
 }
+
+/* ---------- Custom sticker pack ---------- */
+
+.sticker-cell { position: relative; display: block; }
+.sticker-cell > button {
+  border: none; padding: 0; background: transparent; border-radius: 10px;
+  overflow: hidden; cursor: pointer; aspect-ratio: 1; width: 100%;
+}
+.sticker-cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.sticker-add {
+  border: 2px dashed var(--accent);
+  color: var(--accent);
+  background: transparent;
+  border-radius: 10px;
+  aspect-ratio: 1;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.sticker-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Wide screens: pickers float in the empty right column ---------- */
+
+@media (min-width: 1024px) {
+  .gif-panel,
+  .emoji-panel {
+    position: fixed;
+    left: calc(50% + 336px);
+    top: 5rem;
+    width: 330px;
+    max-height: min(70vh, 34rem);
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+    z-index: 40;
+  }
+
+  .emoji-panel { grid-template-columns: repeat(7, 1fr); max-height: 22rem; }
+  .gif-grid { max-height: none; }
+}
