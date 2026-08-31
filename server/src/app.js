@@ -133,6 +133,31 @@ export function buildApp({
     app.pushToUsers(otherIds, { type: 'conversation:new', conversation });
   });
 
+  // Service-to-service endpoint for the farm game (Nông trại vui vẻ), which
+  // lives behind the same public host (path /farm/*) but in its own
+  // container: it authenticates its players by forwarding their lb_session
+  // cookie to /api/me, and calls this route to web-push a player (e.g. "your
+  // crops got stolen"). Guarded by a shared secret — the route only exists
+  // when FARM_INTERNAL_SECRET is configured, and the caller must present the
+  // same value.
+  if (config.farmInternalSecret) {
+    app.post('/internal/farm/notify', async (request, reply) => {
+      if (request.headers['x-farm-secret'] !== config.farmInternalSecret) {
+        return reply.code(401).send({ error: 'unauthorized' });
+      }
+      const { userIds, title, body, url } = request.body ?? {};
+      if (!Array.isArray(userIds) || userIds.length === 0 || !title) {
+        return reply.code(400).send({ error: 'bad_request' });
+      }
+      await app.sendPush(userIds.map(Number), {
+        title: String(title),
+        body: String(body ?? ''),
+        url: typeof url === 'string' && url.startsWith('/') ? url : '/farm/',
+      });
+      return reply.send({ ok: true });
+    });
+  }
+
   // Security headers on every response (API, WS upgrade errors, and the
   // static SPA alike) — onSend runs for every reply regardless of which
   // handler/plugin produced it, including Fastify's own error/404 replies.

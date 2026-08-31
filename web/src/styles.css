@@ -1455,3 +1455,9 @@ a {
 }
 
 .bubble-img { border-radius: 18px; }
+
+/* ---------- Farm game entry ---------- */
+
+.chat-sidebar-head .farm-link { margin-left: auto; text-decoration: none; }
+.home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
+.home-header-actions .icon-button { text-decoration: none; }

@@ -173,9 +173,21 @@ export default function Home() {
     <div className="home-page">
       <header className="home-header">
         <h1>Lazybutts</h1>
-        <Link to="/settings" className="icon-button" aria-label="Settings">
-          ⚙️
-        </Link>
+        <span className="home-header-actions">
+          <a
+            className="icon-button"
+            href="/farm/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Nông trại vui vẻ"
+            title="Nông trại vui vẻ"
+          >
+            🌾
+          </a>
+          <Link to="/settings" className="icon-button" aria-label="Settings">
+            ⚙️
+          </Link>
+        </span>
       </header>
 
       <div className="story-ring">

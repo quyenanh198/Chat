@@ -34,5 +34,10 @@ export function loadConfig(env = process.env) {
   // GIF picker explains how to enable it instead of erroring.
   const giphyKey = env.GIF_GIPHY_KEY || null;
 
-  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, giphyKey };
+  // Optional shared secret for the farm game (Nông trại vui vẻ) sibling
+  // service: enables POST /internal/farm/notify so the farm can web-push
+  // its players through this app. Absent = that route isn't registered.
+  const farmInternalSecret = env.FARM_INTERNAL_SECRET || null;
+
+  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, giphyKey, farmInternalSecret };
 }

@@ -517,6 +517,16 @@ export default function Chat() {
         <div className="chat-sidebar-head">
           <Link to="/" className="icon-button" aria-label="Home">🏠</Link>
           <span className="chat-sidebar-title">Chat</span>
+          <a
+            className="icon-button farm-link"
+            href="/farm/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Nông trại vui vẻ"
+            title="Nông trại vui vẻ"
+          >
+            🌾
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (

@@ -28,6 +28,10 @@ self.addEventListener('activate', (event) => {
 // this worker is not a general-purpose asset cache.
 self.addEventListener('fetch', (event) => {
   if (event.request.mode !== 'navigate') return;
+  // /farm/* is the farm game served by its own service behind the same host —
+  // let it hit the network untouched (and never overwrite the cached chat shell
+  // with a farm page).
+  if (new URL(event.request.url).pathname.startsWith('/farm')) return;
 
   event.respondWith(
     fetch(event.request)
