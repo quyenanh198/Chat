@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../api';
 import { avatarUrl, uploadAvatar } from '../api';
+import AvatarEditor from '../components/AvatarEditor';
 import { ApiError, createInvite, logout, updateSettings, type User } from '../api';
 import { useAuth } from '../AuthContext';
 import { ensurePushSubscription } from '../sw-register';
@@ -18,6 +19,7 @@ export default function Settings() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarDraft, setAvatarDraft] = useState<File | null>(null);
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? user?.username ?? '');
   const [savingName, setSavingName] = useState(false);
@@ -62,13 +64,13 @@ export default function Settings() {
     }
   }
 
-  async function handleAvatarPick(file: File | undefined) {
-    if (!file) return;
+  async function handleAvatarSave(blob: Blob) {
     setAvatarBusy(true);
     setAvatarError(null);
     try {
-      const { user: updated } = await uploadAvatar(file);
+      const { user: updated } = await uploadAvatar(blob);
       setUser(updated);
+      setAvatarDraft(null);
     } catch (err) {
       setAvatarError(err instanceof ApiError ? err.message : 'Failed to upload avatar');
     } finally {
@@ -159,13 +161,21 @@ export default function Settings() {
               : (user.display_name || user.username).charAt(0).toUpperCase()}
           </span>
           <input ref={avatarInputRef} type="file" accept="image/*" hidden
-            onChange={(e) => handleAvatarPick(e.target.files?.[0])} />
+            onChange={(e) => { setAvatarDraft(e.target.files?.[0] ?? null); e.target.value = ''; }} />
           <button type="button" className="primary-button" disabled={avatarBusy}
             onClick={() => avatarInputRef.current?.click()}>
             {avatarBusy ? 'Uploading…' : 'Change avatar'}
           </button>
         </div>
         {avatarError && <p className="inline-error">{avatarError}</p>}
+        {avatarDraft && (
+          <AvatarEditor
+            file={avatarDraft}
+            busy={avatarBusy}
+            onCancel={() => setAvatarDraft(null)}
+            onSave={handleAvatarSave}
+          />
+        )}
       </section>
 
       <section className="settings-section">

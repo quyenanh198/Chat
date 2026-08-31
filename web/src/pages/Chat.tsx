@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  avatarUrl,
   searchGifs,
   setReaction,
   type GifResult,
@@ -64,6 +65,12 @@ export default function Chat() {
   const participantNames = useMemo(() => {
     const map = new Map<number, string>();
     conversation?.participants.forEach((p) => map.set(p.id, p.display_name || p.username));
+    return map;
+  }, [conversation]);
+
+  const participantAvatars = useMemo(() => {
+    const map = new Map<number, string | null>();
+    conversation?.participants.forEach((p) => map.set(p.id, avatarUrl(p.id, p.avatar_at)));
     return map;
   }, [conversation]);
 
@@ -304,6 +311,17 @@ export default function Chat() {
         <button type="button" className="icon-button" onClick={() => navigate('/')} aria-label="Back">
           ←
         </button>
+        <span className="chat-header-avatar">
+          {(() => {
+            const other = conversation && !conversation.is_group
+              ? conversation.participants.find((p) => p.id !== meId)
+              : null;
+            const url = other ? avatarUrl(other.id, other.avatar_at) : null;
+            return url
+              ? <img className="avatar-img" src={url} alt="" />
+              : (title || '?').charAt(0).toUpperCase();
+          })()}
+        </span>
         <h1>{title}</h1>
       </header>
 
@@ -318,6 +336,13 @@ export default function Chat() {
           const senderName = participantNames.get(message.sender_id);
           return (
             <div key={message.id} className={`bubble-row${isMine ? ' bubble-row--mine' : ''}`}>
+              {!isMine && (
+                <span className="msg-avatar" title={senderName ?? ''}>
+                  {participantAvatars.get(message.sender_id)
+                    ? <img className="avatar-img" src={participantAvatars.get(message.sender_id)!} alt="" />
+                    : (senderName ?? '?').charAt(0).toUpperCase()}
+                </span>
+              )}
               <div className="bubble-stack">
                 {reactingId === message.id && (
                   <div className="react-palette" onClick={(e) => e.stopPropagation()}>
