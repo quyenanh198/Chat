@@ -175,7 +175,7 @@ export default function Home() {
         <h1>Lazybutts</h1>
         <span className="home-header-actions">
           <a
-            className="icon-button"
+            className="icon-button farm-link"
             href="/farm/"
             target="_blank"
             rel="noreferrer"
@@ -183,6 +183,16 @@ export default function Home() {
             title="Nông trại vui vẻ"
           >
             🌾
+          </a>
+          <a
+            className="icon-button mahjong-link"
+            href="/mahjong/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="VMahjong"
+            title="VMahjong"
+          >
+            🀄
           </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️

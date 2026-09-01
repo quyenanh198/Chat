@@ -527,6 +527,16 @@ export default function Chat() {
           >
             🌾
           </a>
+          <a
+            className="icon-button mahjong-link"
+            href="/mahjong/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="VMahjong"
+            title="VMahjong"
+          >
+            🀄
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -574,6 +584,16 @@ export default function Chat() {
           title="Nông trại vui vẻ"
         >
           🌾
+        </a>
+        <a
+          className="icon-button mahjong-link"
+          href="/mahjong/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="VMahjong"
+          title="VMahjong"
+        >
+          🀄
         </a>
       </header>
 
