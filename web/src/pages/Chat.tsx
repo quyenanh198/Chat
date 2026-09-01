@@ -745,7 +745,10 @@ export default function Chat() {
         >
           📷
         </button>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" capture hidden onChange={handleFileChange} />
+        {/* Không đặt `capture`: có nó, mobile ép mở thẳng camera thay vì cho
+            chọn từ thư viện ảnh. Bỏ đi thì iOS/Android hiện đủ lựa chọn
+            (Thư viện / Chụp ảnh / Tệp). */}
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" hidden onChange={handleFileChange} />
         <button
           type="button"
           className="icon-button"
