@@ -229,8 +229,11 @@ export default function Settings() {
       </section>
 
       <section className="settings-section">
-        <h2>Media default</h2>
-        <p className="muted-note">How long people can view photos/videos you send.</p>
+        <h2>Ảnh &amp; video gửi đi</h2>
+        <p className="muted-note">
+          <b>24 giờ</b>: người nhận thấy ảnh thu nhỏ và mở lại thoải mái trong 24 giờ (nên dùng).
+          <b> Xem 1 lần</b>: không có ảnh thu nhỏ, mở xong là biến mất — hiện "Opened".
+        </p>
         <div className="mode-toggle">
           <button
             type="button"
@@ -238,7 +241,7 @@ export default function Settings() {
             onClick={() => handleModeChange('once')}
             disabled={savingMode}
           >
-            View once
+            Xem 1 lần
           </button>
           <button
             type="button"
@@ -246,7 +249,7 @@ export default function Settings() {
             onClick={() => handleModeChange('24h')}
             disabled={savingMode}
           >
-            24 hours
+            24 giờ
           </button>
         </div>
         {modeError && <p className="inline-error">{modeError}</p>}

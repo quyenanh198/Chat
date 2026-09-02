@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   avatar_at INTEGER,
   is_admin INTEGER NOT NULL DEFAULT 0,
-  media_mode TEXT NOT NULL DEFAULT 'once' CHECK(media_mode IN ('once','24h')),
+  media_mode TEXT NOT NULL DEFAULT '24h' CHECK(media_mode IN ('once','24h')),
   created_at INTEGER NOT NULL
 );
 

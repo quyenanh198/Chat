@@ -47,7 +47,7 @@ describe('POST /api/auth/register', () => {
     const body = res.json();
     expect(body.user.username).toBe('alice');
     expect(body.user.is_admin).toBe(true);
-    expect(body.user.media_mode).toBe('once');
+    expect(body.user.media_mode).toBe('24h');
     expect(body.user.pass_hash).toBeUndefined();
     expect(extractSessionCookie(res)).toMatch(/^lb_session=.+/);
   });
@@ -376,7 +376,7 @@ describe('GET /api/me', () => {
       id: expect.any(Number),
       username: 'alice',
       is_admin: true,
-      media_mode: 'once',
+      media_mode: '24h',
       display_name: 'alice',
       avatar_at: null,
     });

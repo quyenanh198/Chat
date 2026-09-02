@@ -69,7 +69,7 @@ describe('users table', () => {
 
     expect(user.username).toBe('alice');
     expect(user.is_admin).toBe(0);
-    expect(user.media_mode).toBe('once');
+    expect(user.media_mode).toBe('24h');
     expect(user.created_at).toBe(now);
   });
 

@@ -135,7 +135,10 @@ export async function registerAuthRoutes(app) {
       }
 
       const info = db
-        .prepare('INSERT INTO users (username, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?)')
+        // Explicit '24h' rather than the column default: photos keep a
+        // thumbnail and can be reopened for a day, which is what the family
+        // expects; 'once' stays available as an opt-in in Settings.
+        .prepare("INSERT INTO users (username, pass_hash, is_admin, media_mode, created_at) VALUES (?, ?, ?, '24h', ?)")
         .run(username, passHash, isFirstUser ? 1 : 0, now);
       const userId = info.lastInsertRowid;
 

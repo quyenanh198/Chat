@@ -98,7 +98,7 @@ describe('POST /api/conversations/:id/media', () => {
     const message = res.json();
     expect(message.kind).toBe('image');
     expect(message.sender_id).toBe(alice.id);
-    expect(message.media_mode).toBe('once');
+    expect(message.media_mode).toBe('24h');
     expect(message.expires_at - message.created_at).toBe(24 * 60 * 60 * 1000);
   });
 
@@ -176,6 +176,7 @@ describe('GET /api/media/:messageId — mode once', () => {
   it('lets each recipient view exactly once, deletes the message + file once everyone (but the sender) has viewed', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 2); // alice default media_mode = 'once'
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob, carol] = others;
     const conv = (
       await createConversation(app, alice.cookie, { user_ids: [bob.id, carol.id], name: 'Fam' })
@@ -239,6 +240,7 @@ describe('GET /api/media/:messageId — mode once', () => {
   it('deletes immediately in a 1-1 conversation once the single recipient has viewed', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 1);
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob] = others;
     const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
     const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
@@ -255,6 +257,7 @@ describe('GET /api/media/:messageId — mode once', () => {
   it('returns 403 for a non-member trying to view', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 2);
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob, carol] = others;
     const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
     const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
@@ -267,6 +270,7 @@ describe('GET /api/media/:messageId — mode once', () => {
   it('returns 404 once the message has expired', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 1);
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob] = others;
     const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
     const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
@@ -284,6 +288,7 @@ describe('GET /api/media/:messageId — mode once', () => {
     // "everyone viewed" deletion — otherwise his 2nd request would 404
     // (message gone) rather than exercise the already_viewed 403 path.
     const { alice, others } = await setupUsers(app, 2);
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob, carol] = others;
     const conv = (
       await createConversation(app, alice.cookie, { user_ids: [bob.id, carol.id], name: 'Fam' })
@@ -311,6 +316,7 @@ describe('GET /api/media/:messageId — mode once', () => {
   it('regression: concurrent double-view from the same once-mode recipient succeeds exactly once (no TOCTOU)', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 1);
+    await patchSettings(app, alice.cookie, 'once'); // mặc định giờ là 24h
     const [bob] = others;
     const conv = (await createConversation(app, alice.cookie, { user_ids: [bob.id] })).json().conversation;
     const uploadRes = await uploadMedia(app, alice.cookie, conv.id, { buffer: FAKE_PNG });
