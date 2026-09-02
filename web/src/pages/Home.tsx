@@ -194,6 +194,16 @@ export default function Home() {
           >
             🀄
           </a>
+          <a
+            className="icon-button blockpuzzle-link"
+            href="/blockpuzzle/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Xếp Gạch"
+            title="Xếp Gạch"
+          >
+            🧱
+          </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️
           </Link>

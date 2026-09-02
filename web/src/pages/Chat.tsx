@@ -655,6 +655,16 @@ export default function Chat() {
           >
             🀄
           </a>
+          <a
+            className="icon-button blockpuzzle-link"
+            href="/blockpuzzle/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Xếp Gạch"
+            title="Xếp Gạch"
+          >
+            🧱
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -712,6 +722,16 @@ export default function Chat() {
           title="VMahjong"
         >
           🀄
+        </a>
+        <a
+          className="icon-button blockpuzzle-link"
+          href="/blockpuzzle/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Xếp Gạch"
+          title="Xếp Gạch"
+        >
+          🧱
         </a>
       </header>
 
