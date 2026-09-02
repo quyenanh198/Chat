@@ -605,6 +605,9 @@ a {
 }
 
 .composer {
+  /* Anchors .mention-popup; the mobile media query below switches this to
+     sticky, which is still a positioned box so the popup keeps working. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1513,3 +1516,72 @@ a {
   padding: 0;
   box-shadow: none;
 }
+
+/* ---------- @mention ---------- */
+.mention {
+  color: var(--accent-strong);
+  font-weight: 700;
+  background: rgba(0, 132, 255, 0.12);
+  border-radius: 6px;
+  padding: 0 3px;
+}
+.bubble-row--mine .mention {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+}
+.bubble--mentioned {
+  box-shadow: 0 0 0 2px #f5b400;
+}
+.mention-btn {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.mention-popup {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(100% + 4px);
+  max-height: 240px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 0.3rem;
+  z-index: 40;
+}
+.mention-popup button {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mention-popup button:hover,
+.mention-popup button:first-child {
+  background: var(--bg-elevated);
+}
+.mention-popup-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--avatar);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: none;
+}
+.mention-popup-avatar .avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.mention-popup-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mention-popup-hint { color: var(--text-muted); font-size: 0.75rem; }

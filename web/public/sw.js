@@ -55,17 +55,30 @@ self.addEventListener('push', (event) => {
     data = { title: 'Lazybutts', body: event.data.text() };
   }
 
+  const url = data.url || '/';
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // App already on screen? Don't double-notify — the WS message is
-        // rendering live right now.
-        const visible = clientList.some((c) => c.visibilityState === 'visible');
-        if (visible) return undefined;
+        // Already looking at the very conversation this is about? Don't
+        // double-notify — the WS event is rendering live right now. Any
+        // other visible page (home, another chat, the farm) still gets the
+        // banner, otherwise a mention or a reaction in chat B goes unseen
+        // while chat A is open.
+        const onIt = clientList.some((c) => {
+          if (c.visibilityState !== 'visible') return false;
+          try {
+            return new URL(c.url).pathname === url;
+          } catch {
+            return false;
+          }
+        });
+        if (onIt) return undefined;
         return self.registration.showNotification(data.title, {
           body: data.body,
-          data: { url: data.url || '/' },
+          tag: url,
+          renotify: true,
+          data: { url },
         });
       }),
   );
@@ -79,7 +92,9 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       const existing = clientList.find((client) => 'focus' in client);
       if (existing) {
-        return existing.focus();
+        // Land on the conversation the notification is about, not wherever
+        // the tab happened to be left.
+        return existing.focus().then((c) => (c && 'navigate' in c ? c.navigate(url).catch(() => c) : c));
       }
       if (self.clients.openWindow) {
         return self.clients.openWindow(url);

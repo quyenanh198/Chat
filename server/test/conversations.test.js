@@ -262,6 +262,39 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(message.created_at).toBeLessThanOrEqual(after);
   });
 
+  it('hands @mentioned participants and the replied-to author to notifyNewMessage', async () => {
+    const app = buildTestApp();
+    const { alice, others } = await setupUsers(app, 2);
+    const [bob, carol] = others;
+    const created = await createConversation(app, alice.cookie, { user_ids: [bob.id, carol.id], name: 'Nhà' });
+    const conversationId = created.json().conversation.id;
+
+    const calls = [];
+    app.notifyNewMessage = async (convId, message, opts) => {
+      calls.push({ convId, message, opts });
+    };
+
+    // Case-insensitive username match; a stranger's "@name" tags nobody.
+    await sendText(app, alice.cookie, conversationId, 'ê @Bob xem cái này, @zed');
+    expect(calls[0].opts.mentionIds).toEqual([bob.id]);
+    expect(calls[0].opts.replyAuthorId).toBeNull();
+
+    // @all (and its Vietnamese spellings) tags everyone but the sender.
+    await sendText(app, bob.cookie, conversationId, '@tất cả ăn cơm chưa');
+    expect(calls[1].opts.mentionIds.sort()).toEqual([alice.id, carol.id].sort());
+
+    // Replying passes the original author along.
+    const replyRes = await app.inject({
+      method: 'POST',
+      url: `/api/conversations/${conversationId}/messages`,
+      headers: { cookie: carol.cookie },
+      payload: { body: 'rồi', reply_to: calls[1].message.id },
+    });
+    expect(replyRes.statusCode).toBe(201);
+    expect(calls[2].opts.replyAuthorId).toBe(bob.id);
+    expect(calls[2].opts.mentionIds).toEqual([]);
+  });
+
   it('calls the notifyNewMessage hook after inserting the message', async () => {
     const app = buildTestApp();
     const { alice, others } = await setupUsers(app, 1);
@@ -363,5 +396,63 @@ describe('POST /api/conversations/:id/messages', () => {
     });
 
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('POST /api/conversations/:id/messages/:mid/reactions push', () => {
+  async function setupWithMessage() {
+    const app = buildTestApp();
+    const { alice, others } = await setupUsers(app, 1);
+    const [bob] = others;
+    const created = await createConversation(app, alice.cookie, { user_ids: [bob.id] });
+    const conversationId = created.json().conversation.id;
+    const message = (await sendText(app, alice.cookie, conversationId, 'chào')).json();
+    const pushes = [];
+    app.sendPush = async (userIds, payload) => {
+      pushes.push({ userIds, payload });
+    };
+    const react = (cookie, emoji) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/conversations/${conversationId}/messages/${message.id}/reactions`,
+        headers: { cookie },
+        payload: { emoji },
+      });
+    return { app, alice, bob, conversationId, message, pushes, react };
+  }
+
+  it('pushes the message author when someone else reacts, quoting the message', async () => {
+    const { alice, bob, conversationId, pushes, react } = await setupWithMessage();
+    const res = await react(bob.cookie, '❤️');
+    expect(res.statusCode).toBe(200);
+    await sleep(0); // the push is fired without awaiting
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].userIds).toEqual([alice.id]);
+    expect(pushes[0].payload.title).toContain('❤️');
+    expect(pushes[0].payload.title).toContain('bob');
+    expect(pushes[0].payload.body).toBe('chào');
+    expect(pushes[0].payload.url).toBe(`/chat/${conversationId}`);
+  });
+
+  it('stays silent for self-reactions and for clearing a reaction', async () => {
+    const { alice, bob, pushes, react } = await setupWithMessage();
+    await react(alice.cookie, '👍');
+    await react(bob.cookie, '❤️');
+    await react(bob.cookie, '');
+    await sleep(0);
+    expect(pushes).toHaveLength(1);
+  });
+
+  it('includes the message author in the reaction:update WS event', async () => {
+    const { app, alice, bob, message, react } = await setupWithMessage();
+    const events = [];
+    app.pushToUsers = (userIds, event) => {
+      events.push({ userIds, event });
+    };
+    await react(bob.cookie, '🔥');
+    const update = events.find((e) => e.event.type === 'reaction:update');
+    expect(update.event.message_id).toBe(message.id);
+    expect(update.event.message_sender_id).toBe(alice.id);
+    expect(update.event.user_id).toBe(bob.id);
   });
 });

@@ -100,7 +100,12 @@ export function buildApp({
   // every OTHER participant over WS immediately, then web-pushes anyone
   // among them without an open socket (sendPush itself skips anyone with
   // one, and is a safe no-op when VAPID isn't configured).
-  app.decorate('notifyNewMessage', async (conversationId, message) => {
+  //
+  // `mentionIds` (participants @-tagged in the body) and `replyAuthorId`
+  // (author of the message being replied to) get their own push title so a
+  // phone shows "X nhắc đến bạn" / "X trả lời bạn" instead of a plain new-
+  // message line; everyone else gets the generic one.
+  app.decorate('notifyNewMessage', async (conversationId, message, { mentionIds = [], replyAuthorId = null } = {}) => {
     const recipientIds = db
       .prepare('SELECT user_id FROM participants WHERE conversation_id = ? AND user_id != ?')
       .all(conversationId, message.sender_id)
@@ -110,11 +115,19 @@ export function buildApp({
     app.pushToUsers(recipientIds, { type: 'message:new', conversation_id: conversationId, message });
 
     const sender = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(message.sender_id);
-    await app.sendPush(recipientIds, {
-      title: sender?.display_name || sender?.username || 'Lazybutts',
-      body: pushBodyFor(message),
-      url: `/chat/${conversationId}`,
-    });
+    const senderName = sender?.display_name || sender?.username || 'Lazybutts';
+    const body = pushBodyFor(message);
+    const url = `/chat/${conversationId}`;
+    const mentioned = new Set(mentionIds.filter((id) => recipientIds.includes(id)));
+    const replied = replyAuthorId !== null && recipientIds.includes(replyAuthorId) && !mentioned.has(replyAuthorId)
+      ? replyAuthorId
+      : null;
+    const others = recipientIds.filter((id) => !mentioned.has(id) && id !== replied);
+    await Promise.all([
+      mentioned.size > 0 && app.sendPush([...mentioned], { title: `📣 ${senderName} nhắc đến bạn`, body, url }),
+      replied !== null && app.sendPush([replied], { title: `↩️ ${senderName} trả lời bạn`, body, url }),
+      others.length > 0 && app.sendPush(others, { title: senderName, body, url }),
+    ]);
   });
 
   // Called after a story is inserted. Broadcast-only over WS to every OTHER

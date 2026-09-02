@@ -106,6 +106,27 @@ function reactionsByMessage(db, messageIds, meId) {
   return out;
 }
 
+// "@all" and its Vietnamese spellings tag every participant at once. A
+// lookahead instead of \b: JS's \b only knows ASCII word characters, so it
+// never fires after "cả" and "@tất cả" would silently tag nobody.
+const MENTION_ALL_RE = /@(all|tất cả|tat ca|mọi người|moi nguoi)(?![\p{L}\p{N}_])/iu;
+
+// Ids of the participants (other than the sender) whose display name or
+// username appears as an @mention in `body`. The client inserts mentions as
+// plain "@Tên hiển thị" text, so this is a case-insensitive substring match
+// against each member's names — no ids are stored in the message body.
+export function mentionedUserIds(db, conversationId, body, senderId) {
+  const lower = body.toLowerCase();
+  const all = MENTION_ALL_RE.test(body);
+  const ids = [];
+  for (const p of getParticipants(db, conversationId)) {
+    if (p.id === senderId) continue;
+    const names = [p.display_name, p.username].filter(Boolean);
+    if (all || names.some((n) => lower.includes(`@${n.toLowerCase()}`))) ids.push(p.id);
+  }
+  return ids;
+}
+
 export async function registerConversationRoutes(app) {
   app.post('/conversations', { preHandler: requireUser }, async (request, reply) => {
     const db = app.db;
@@ -251,7 +272,7 @@ export async function registerConversationRoutes(app) {
       return reply.code(403).send({ error: 'not_a_member' });
     }
     const message = db
-      .prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND expires_at > ?')
+      .prepare('SELECT id, sender_id, kind, body FROM messages WHERE id = ? AND conversation_id = ? AND expires_at > ?')
       .get(messageId, conversationId, Date.now());
     if (!message) {
       return reply.code(404).send({ error: 'message_not_found' });
@@ -282,10 +303,25 @@ export async function registerConversationRoutes(app) {
       type: 'reaction:update',
       conversation_id: conversationId,
       message_id: messageId,
+      message_sender_id: message.sender_id,
       user_id: request.user.id,
       emoji,
       reactions: summary.map(({ emoji: e, count, names }) => ({ emoji: e, count, names })),
     });
+
+    // Tell the author someone reacted to their message. Not awaited for the
+    // same reason as notifyNewMessage below; clearing a reaction is silent.
+    if (emoji && message.sender_id !== request.user.id) {
+      const reactor = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(request.user.id);
+      const snippet = message.kind === 'image' ? '📷 Ảnh' : message.kind === 'video' ? '🎥 Video' : (message.body ?? '').slice(0, 80);
+      app.sendPush([message.sender_id], {
+        title: `${emoji} ${reactor?.display_name || reactor?.username || 'Ai đó'} thả cảm xúc`,
+        body: snippet,
+        url: `/chat/${conversationId}`,
+      }).catch((err) => {
+        request.log.error({ err }, 'reaction push failed');
+      });
+    }
 
     return reply.send({ ok: true, reactions: summary });
   });
@@ -310,14 +346,16 @@ export async function registerConversationRoutes(app) {
       return reply.code(400).send({ error: 'body_required' });
     }
     let replyTo = null;
+    let replyAuthorId = null;
     if (reply_to !== undefined && reply_to !== null) {
       replyTo = Number(reply_to);
       const target = Number.isInteger(replyTo)
-        ? db.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?').get(replyTo, conversationId)
+        ? db.prepare('SELECT id, sender_id FROM messages WHERE id = ? AND conversation_id = ?').get(replyTo, conversationId)
         : null;
       if (!target) {
         return reply.code(400).send({ error: 'invalid_reply_to' });
       }
+      replyAuthorId = target.sender_id;
     }
 
     const now = Date.now();
@@ -342,7 +380,10 @@ export async function registerConversationRoutes(app) {
     // but that's still 5s the sender shouldn't have to wait on). Not
     // awaited on purpose — the sender's request replies immediately either
     // way; a delivery failure here is logged, never surfaced to the sender.
-    app.notifyNewMessage(conversationId, message).catch((err) => {
+    app.notifyNewMessage(conversationId, message, {
+      mentionIds: mentionedUserIds(db, conversationId, body, request.user.id),
+      replyAuthorId,
+    }).catch((err) => {
       request.log.error({ err }, 'notifyNewMessage failed');
     });
 

@@ -56,6 +56,24 @@ const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 const EMOJI_PANEL = ['😀','😁','😂','🤣','😊','😍','😘','😜','🤔','😴','😭','😱','😡','🥳','🤗','👍','👎','👏','🙏','💪','🔥','✨','🎉','❤️','💔','😅','🙈','🤝','😷','🤯','😇','🥰','😋','🤤','🍜','⚡'];
 const PAGE_GIF_RE = /^https?:\/\/(www\.)?(giphy\.com\/gifs\/|tenor\.com\/view\/)\S+$/i;
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(gif|png|jpe?g|webp)(\?\S*)?$/i;
+// "@all" và các cách viết tiếng Việt — tag cả nhóm một lần (khớp server).
+const MENTION_ALL = ['all', 'tất cả', 'tat ca', 'mọi người', 'moi nguoi'];
+const MENTION_ALL_LABEL = 'Tất cả';
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Regex khớp mọi "@Tên" của thành viên (tên dài ưu tiên trước để "@An Nhiên"
+// không bị cắt thành "@An") cộng các dạng @all. Lookahead thay cho \b vì \b
+// của JS không biết chữ có dấu ("@tất cả" sẽ không khớp).
+function mentionRegex(names: string[], flags = 'giu'): RegExp {
+  const alts = [...new Set([...names, ...MENTION_ALL])]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe);
+  return new RegExp(`@(${alts.join('|')})(?![\\p{L}\\p{N}_])`, flags);
+}
 
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
@@ -88,7 +106,17 @@ export default function Chat() {
   const [gifStatus, setGifStatus] = useState<string | null>(null);
   const [resolvedEmbeds, setResolvedEmbeds] = useState<Record<string, string | null>>({});
   const [replyTarget, setReplyTarget] = useState<{ id: number; name: string; snippet: string } | null>(null);
+  // Đang gõ "@..." trong ô soạn: query sau dấu @ và vị trí dấu @ trong text.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolvingRef = useRef<Set<string>>(new Set());
+
+  const showNotice = useCallback((text: string) => {
+    setNotice(text);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 3500);
+  }, []);
 
   const [recentGifs, setRecentGifs] = useState<GifResult[]>(() => {
     try { return JSON.parse(localStorage.getItem('chat.recentGifs') || '[]'); } catch { return []; }
@@ -114,6 +142,89 @@ export default function Chat() {
     conversation?.participants.forEach((p) => map.set(p.id, avatarUrl(p.id, p.avatar_at)));
     return map;
   }, [conversation]);
+
+  const mentionRe = useMemo(
+    () => mentionRegex((conversation?.participants ?? []).flatMap((p) => [p.display_name ?? '', p.username])),
+    [conversation],
+  );
+  // Tin có nhắc đến mình (hoặc @all) thì bong bóng được tô nổi — regex không
+  // có cờ g để .test() không giữ lastIndex giữa các lần gọi.
+  const meRe = useMemo(
+    () => mentionRegex([user?.display_name ?? '', user?.username ?? ''], 'iu'),
+    [user],
+  );
+  function mentionsMe(body: string): boolean {
+    return meRe.test(body);
+  }
+
+  // Tách "@Tên" thành span để tô màu; phần còn lại giữ nguyên.
+  function renderBody(body: string) {
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    mentionRe.lastIndex = 0;
+    for (let m = mentionRe.exec(body); m; m = mentionRe.exec(body)) {
+      if (m.index > last) parts.push(body.slice(last, m.index));
+      parts.push(<span key={m.index} className="mention">{m[0]}</span>);
+      last = m.index + m[0].length;
+    }
+    if (last < body.length) parts.push(body.slice(last));
+    return parts.length ? parts : body;
+  }
+
+  const mentionOptions = useMemo(() => {
+    if (!mention) return [];
+    const q = mention.query.toLowerCase();
+    const people = (conversation?.participants ?? [])
+      .filter((p) => p.id !== meId)
+      .map((p) => ({ id: p.id, name: p.display_name || p.username, avatar: avatarUrl(p.id, p.avatar_at) }));
+    const all = conversation?.is_group ? [{ id: 0, name: MENTION_ALL_LABEL, avatar: null }] : [];
+    return [...all, ...people].filter((o) => !q || o.name.toLowerCase().includes(q));
+  }, [mention, conversation, meId]);
+
+  function updateMention(value: string, caret: number) {
+    const before = value.slice(0, caret);
+    const m = before.match(/(?:^|\s)@([^\s@]*)$/);
+    setMention(m ? { query: m[1], start: caret - m[1].length - 1 } : null);
+  }
+
+  function pickMention(name: string) {
+    const input = composerRef.current;
+    if (!mention || !input) return;
+    const caret = input.selectionStart ?? text.length;
+    const next = `${text.slice(0, mention.start)}@${name} ${text.slice(caret)}`;
+    setText(next);
+    setMention(null);
+    requestAnimationFrame(() => {
+      input.focus();
+      const pos = mention.start + name.length + 2;
+      input.setSelectionRange(pos, pos);
+    });
+  }
+
+  function openMentionPicker() {
+    const input = composerRef.current;
+    const caret = input?.selectionStart ?? text.length;
+    const needsSpace = caret > 0 && !/\s/.test(text[caret - 1]);
+    const inserted = `${needsSpace ? ' ' : ''}@`;
+    const next = text.slice(0, caret) + inserted + text.slice(caret);
+    setText(next);
+    setMention({ query: '', start: caret + inserted.length - 1 });
+    requestAnimationFrame(() => {
+      input?.focus();
+      const pos = caret + inserted.length;
+      input?.setSelectionRange(pos, pos);
+    });
+  }
+
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!mention) return;
+    if ((event.key === 'Enter' || event.key === 'Tab') && mentionOptions.length > 0) {
+      event.preventDefault();
+      pickMention(mentionOptions[0].name);
+    } else if (event.key === 'Escape') {
+      setMention(null);
+    }
+  }
 
   const loadMessages = useCallback(async () => {
     if (!Number.isInteger(conversationId)) return;
@@ -195,8 +306,14 @@ export default function Chat() {
   // Live reaction updates arrive with neutral counts; recompute my own flag.
   useEffect(() => {
     const conn: WsConnection = connect();
-    const off = conn.onEvent((event: any) => {
-      if (event.type !== 'reaction:update' || event.conversation_id !== conversationId) return;
+    const off = conn.onEvent((event) => {
+      if (event.type !== 'reaction:update') return;
+      // Ai đó thả cảm xúc lên tin của mình — nhắc nhỏ dù đang ở chat nào.
+      if (event.emoji && event.user_id !== meId && event.message_sender_id === meId) {
+        const who = participantNames.get(event.user_id) ?? 'Ai đó';
+        showNotice(`${event.emoji} ${who} đã thả cảm xúc tin nhắn của bạn`);
+      }
+      if (event.conversation_id !== conversationId) return;
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== event.message_id) return m;
@@ -205,7 +322,7 @@ export default function Chat() {
             : (m.reactions?.find((r) => r.mine)?.emoji ?? null);
           return {
             ...m,
-            reactions: (event.reactions as { emoji: string; count: number }[]).map((r) => ({
+            reactions: event.reactions.map((r) => ({
               ...r,
               mine: r.emoji === prevMine,
             })),
@@ -217,7 +334,7 @@ export default function Chat() {
       off();
       conn.close();
     };
-  }, [conversationId, meId]);
+  }, [conversationId, meId, participantNames, showNotice]);
 
 
   // Resolve pasted giphy/tenor page links to direct media (server og:image).
@@ -282,6 +399,7 @@ export default function Chat() {
       const message = await sendMessage(conversationId, body, replyTarget?.id);
       setMessages((prev) => [...prev, message]);
       setText('');
+      setMention(null);
       setReplyTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send message');
@@ -627,7 +745,7 @@ export default function Chat() {
                   </div>
                 )}
               <div
-                className="bubble"
+                className={`bubble${!isMine && message.kind === 'text' && mentionsMe(message.body ?? '') ? ' bubble--mentioned' : ''}`}
                 onClick={() => setReactingId((cur) => (cur === message.id ? null : message.id))}
               >
                 {conversation?.is_group && !isMine && senderName && (
@@ -647,7 +765,7 @@ export default function Chat() {
                   ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] === undefined ? (
                     <div className="bubble-text bubble-text--loading">Đang tải GIF…</div>
                   ) : (
-                    <div className="bubble-text">{message.body}</div>
+                    <div className="bubble-text">{renderBody(message.body ?? '')}</div>
                   ))}
                 {message.kind !== 'text' &&
                   // The sender can always re-view their own media until it
@@ -751,12 +869,35 @@ export default function Chat() {
         <input ref={fileInputRef} type="file" accept="image/*,video/*" hidden onChange={handleFileChange} />
         <button
           type="button"
+          className="icon-button mention-btn"
+          onClick={openMentionPicker}
+          disabled={sending}
+          aria-label="Tag tên"
+          title="Tag tên (@)"
+        >
+          @
+        </button>
+        <button
+          type="button"
           className="icon-button"
           onClick={() => { setShowEmoji((v) => !v); setShowGif(false); setShowMeme(false); }}
           aria-label="Emoji"
         >
           😊
         </button>
+        {mention && mentionOptions.length > 0 && (
+          <div className="mention-popup" role="listbox">
+            {mentionOptions.map((o) => (
+              <button key={o.id} type="button" role="option" onMouseDown={(e) => e.preventDefault()} onClick={() => pickMention(o.name)}>
+                <span className="mention-popup-avatar">
+                  {o.avatar ? <img className="avatar-img" src={o.avatar} alt="" /> : o.id === 0 ? '👥' : o.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="mention-popup-name">{o.name}</span>
+                {o.id === 0 && <span className="mention-popup-hint">cả nhóm</span>}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           className="icon-button gif-button"
@@ -778,7 +919,12 @@ export default function Chat() {
           ref={composerRef}
           className="composer-input"
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            updateMention(event.target.value, event.target.selectionStart ?? event.target.value.length);
+          }}
+          onKeyDown={handleComposerKeyDown}
+          onBlur={() => setTimeout(() => setMention(null), 150)}
           onPaste={handlePaste}
           placeholder="Message"
           disabled={sending}
@@ -803,6 +949,11 @@ export default function Chat() {
       {viewerError && (
         <div className="toast toast--error" onClick={() => setViewerError(null)}>
           {viewerError}
+        </div>
+      )}
+      {notice && !viewerError && (
+        <div className="toast" onClick={() => setNotice(null)}>
+          {notice}
         </div>
       )}
     </div>

@@ -13,7 +13,16 @@ import type { Conversation, Message } from './api';
 export type WsEvent =
   | { type: 'message:new'; conversation_id: number; message: Message }
   | { type: 'story:new'; user_id: number; story_id: number }
-  | { type: 'conversation:new'; conversation: Conversation };
+  | { type: 'conversation:new'; conversation: Conversation }
+  | {
+      type: 'reaction:update';
+      conversation_id: number;
+      message_id: number;
+      message_sender_id: number;
+      user_id: number;
+      emoji: string;
+      reactions: { emoji: string; count: number; names?: string[] }[];
+    };
 
 type EventListener = (event: WsEvent) => void;
 type OpenListener = () => void;
