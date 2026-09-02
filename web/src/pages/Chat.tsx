@@ -522,8 +522,8 @@ export default function Chat() {
             href="/farm/"
             target="_blank"
             rel="noreferrer"
-            aria-label="Nông trại vui vẻ"
-            title="Nông trại vui vẻ"
+            aria-label="Ăn trộm dzui dzẻ"
+            title="Ăn trộm dzui dzẻ"
           >
             🌾
           </a>
@@ -580,8 +580,8 @@ export default function Chat() {
           href="/farm/"
           target="_blank"
           rel="noreferrer"
-          aria-label="Nông trại vui vẻ"
-          title="Nông trại vui vẻ"
+          aria-label="Ăn trộm dzui dzẻ"
+          title="Ăn trộm dzui dzẻ"
         >
           🌾
         </a>
