@@ -44,7 +44,13 @@ export interface PushApi {
 export async function currentPushEndpoint(): Promise<string | null> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
   try {
-    const registration = await navigator.serviceWorker.ready;
+    // `ready` never settles when no worker is registered (e.g. registration
+    // failed) — cap the wait so callers can still render a status.
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    if (!registration) return null;
     const subscription = await registration.pushManager.getSubscription();
     return subscription?.endpoint ?? null;
   } catch {

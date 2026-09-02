@@ -36,12 +36,11 @@ export default function Settings() {
 
   async function refreshPushStatus() {
     try {
-      const [status, endpoint] = await Promise.all([api.getPushStatus(), currentPushEndpoint()]);
-      setPushStatus(status);
-      setThisEndpoint(endpoint);
+      setPushStatus(await api.getPushStatus());
     } catch {
       // status is a nicety; the enable/test buttons still work without it
     }
+    setThisEndpoint(await currentPushEndpoint());
   }
 
   const [loggingOut, setLoggingOut] = useState(false);
@@ -56,7 +55,7 @@ export default function Settings() {
       setNotifState('unsupported');
       return;
     }
-    setNotifState(Notification.permission === 'granted' ? 'granted' : 'unknown');
+    setNotifState(Notification.permission === 'granted' ? 'granted' : Notification.permission === 'denied' ? 'denied' : 'unknown');
     void refreshPushStatus();
   }, []);
 
