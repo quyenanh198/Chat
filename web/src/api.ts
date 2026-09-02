@@ -268,6 +268,24 @@ export function subscribePush(subscription: PushSubscriptionPayload): Promise<{ 
   return api.post('/api/push/subscribe', { subscription });
 }
 
+export interface PushStatus {
+  enabled: boolean;
+  devices: { endpoint: string; created_at: number }[];
+}
+
+export function getPushStatus(): Promise<PushStatus> {
+  return api.get('/api/push/status');
+}
+
+export interface PushTestResult {
+  sent: number;
+  results: { status: number; error: string | null; host: string }[];
+}
+
+export function sendPushTest(): Promise<PushTestResult> {
+  return api.post('/api/push/test', {});
+}
+
 export function createInvite(): Promise<{ code: string }> {
   return api.post('/api/invites');
 }

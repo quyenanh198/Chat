@@ -1585,3 +1585,12 @@ a {
 .mention-popup-avatar .avatar-img { width: 100%; height: 100%; object-fit: cover; }
 .mention-popup-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-popup-hint { color: var(--text-muted); font-size: 0.75rem; }
+
+/* ---------- Nhắc bật thông báo ---------- */
+.push-nudge {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin: 0.6rem 1rem 0; padding: 0.6rem 0.8rem;
+  border-radius: 14px; background: #fff4d6; border: 1px solid #f2d48a; font-size: 0.85rem;
+}
+.push-nudge span { flex: 1 1 200px; }
+.push-nudge-btn { padding: 0.45rem 0.9rem; border-radius: 999px; text-decoration: none; font-weight: 600; }

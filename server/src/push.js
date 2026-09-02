@@ -55,11 +55,14 @@ export function createPush(config, db, hasOpenSocket, logger = console, pushTime
   // failure is caught per-subscription so one bad endpoint can't sink the
   // rest, and a 404/410 response (the push service telling us the
   // subscription is gone) deletes that push_subs row.
+  // Returns one {endpoint, status, error} per subscription attempted (empty
+  // when push is disabled) so callers like the self-test route can report
+  // what the push services answered; existing callers ignore the value.
   async function sendPush(userIds, payload) {
-    if (!vapid) return;
+    if (!vapid) return [];
 
     const ids = Array.isArray(userIds) ? userIds : [userIds];
-    if (ids.length === 0) return;
+    if (ids.length === 0) return [];
 
     // Send to every recipient regardless of open sockets: a user may be
     // online on one device while their phone's tab is closed — the phone
@@ -69,25 +72,27 @@ export function createPush(config, db, hasOpenSocket, logger = console, pushTime
 
     const placeholders = targetIds.map(() => '?').join(',');
     const subs = db.prepare(`SELECT * FROM push_subs WHERE user_id IN (${placeholders})`).all(...targetIds);
-    if (subs.length === 0) return;
+    if (subs.length === 0) return [];
 
     const body = JSON.stringify(payload);
 
-    await Promise.all(
+    return Promise.all(
       subs.map(async (sub) => {
         try {
-          await withTimeout(
+          const res = await withTimeout(
             webpush.sendNotification(
               { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
               body,
             ),
             pushTimeoutMs,
           );
+          return { endpoint: sub.endpoint, status: res?.statusCode ?? 201, error: null };
         } catch (err) {
           const status = err?.statusCode;
           if (status === 404 || status === 410) {
             db.prepare('DELETE FROM push_subs WHERE id = ?').run(sub.id);
           }
+          return { endpoint: sub.endpoint, status: status ?? 0, error: err?.code || err?.message || 'push_failed' };
           // Any other failure (network blip, 5xx from the push service, or
           // our own PUSH_TIMEOUT above) is swallowed on purpose — a push
           // delivery hiccup must never break the message-send request path

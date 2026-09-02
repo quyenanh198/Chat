@@ -11,8 +11,10 @@ import {
   type Conversation,
   type Participant,
   type StoryGroup,
+  getPushStatus,
 } from '../api';
 import { useAuth } from '../AuthContext';
+import { currentPushEndpoint, isIOS, isStandalone } from '../sw-register';
 import { connect, type WsConnection } from '../ws';
 
 function otherParticipant(conversation: Conversation, meId: number): Participant | undefined {
@@ -164,6 +166,33 @@ export default function Home() {
     }
   }
 
+  // Nhắc bật thông báo khi thiết bị này chưa đăng ký (ẩn 7 ngày sau khi đóng).
+  const [pushNudge, setPushNudge] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (Number(localStorage.getItem('pushNudgeHiddenUntil') || 0) > Date.now()) return;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+          if (!cancelled && isIOS() && !isStandalone()) setPushNudge(true);
+          return;
+        }
+        if (Notification.permission === 'denied') return;
+        const endpoint = await currentPushEndpoint();
+        if (!endpoint) { if (!cancelled) setPushNudge(true); return; }
+        const status = await getPushStatus();
+        if (!cancelled && !status.devices.some((d) => d.endpoint === endpoint)) setPushNudge(true);
+      } catch {
+        // im lặng: chỉ là lời nhắc
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  function hidePushNudge() {
+    try { localStorage.setItem('pushNudgeHiddenUntil', String(Date.now() + 7 * 24 * 3600 * 1000)); } catch {}
+    setPushNudge(false);
+  }
+
   const sortedConversations = useMemo(
     () => [...conversations].sort((a, b) => (b.last_message?.created_at ?? b.created_at) - (a.last_message?.created_at ?? a.created_at)),
     [conversations],
@@ -171,6 +200,13 @@ export default function Home() {
 
   return (
     <div className="home-page">
+      {pushNudge && (
+        <div className="push-nudge">
+          <span>🔔 Bật thông báo để biết khi có tin nhắn, được nhắc tên hay bị trộm vườn.</span>
+          <Link to="/settings" className="primary-button push-nudge-btn">Bật ngay</Link>
+          <button type="button" className="icon-button" onClick={hidePushNudge} aria-label="Đóng">✕</button>
+        </div>
+      )}
       <header className="home-header">
         <h1>Lazybutts</h1>
         <span className="home-header-actions">

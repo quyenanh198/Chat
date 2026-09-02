@@ -5,7 +5,7 @@ import { avatarUrl, uploadAvatar } from '../api';
 import AvatarEditor from '../components/AvatarEditor';
 import { ApiError, createInvite, logout, updateSettings, type User } from '../api';
 import { useAuth } from '../AuthContext';
-import { ensurePushSubscription } from '../sw-register';
+import { currentPushEndpoint, ensurePushSubscription, isIOS, isStandalone } from '../sw-register';
 
 type NotifState = 'unknown' | 'granted' | 'denied' | 'unsupported';
 
@@ -29,6 +29,20 @@ export default function Settings() {
   const [notifState, setNotifState] = useState<NotifState>('unknown');
   const [enablingNotifs, setEnablingNotifs] = useState(false);
   const [notifError, setNotifError] = useState<string | null>(null);
+  const [pushStatus, setPushStatus] = useState<api.PushStatus | null>(null);
+  const [thisEndpoint, setThisEndpoint] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  async function refreshPushStatus() {
+    try {
+      const [status, endpoint] = await Promise.all([api.getPushStatus(), currentPushEndpoint()]);
+      setPushStatus(status);
+      setThisEndpoint(endpoint);
+    } catch {
+      // status is a nicety; the enable/test buttons still work without it
+    }
+  }
 
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -43,6 +57,7 @@ export default function Settings() {
       return;
     }
     setNotifState(Notification.permission === 'granted' ? 'granted' : 'unknown');
+    void refreshPushStatus();
   }, []);
 
   if (!user) return null;
@@ -100,11 +115,29 @@ export default function Settings() {
     try {
       const subscription = await ensurePushSubscription(api);
       setNotifState(subscription ? 'granted' : 'unsupported');
+      await refreshPushStatus();
     } catch (err) {
       setNotifState(Notification.permission === 'denied' ? 'denied' : 'unknown');
       setNotifError(err instanceof Error ? err.message : 'Failed to enable notifications');
     } finally {
       setEnablingNotifs(false);
+    }
+  }
+
+  async function handleTestPush() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { sent, results } = await api.sendPushTest();
+      const detail = results.map((r) => `${r.host || '?'}: ${r.status || r.error || '?'}`).join(' · ');
+      setTestResult(sent > 0
+        ? `Đã gửi tới ${sent}/${results.length} thiết bị — kiểm tra màn hình khoá/thanh thông báo nhé. (${detail})`
+        : `Không thiết bị nào nhận được. (${detail || 'chưa đăng ký thiết bị nào'})`);
+      await refreshPushStatus();
+    } catch (err) {
+      setTestResult(err instanceof ApiError ? err.message : 'Gửi thử thất bại');
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -221,18 +254,46 @@ export default function Settings() {
       </section>
 
       <section className="settings-section">
-        <h2>Notifications</h2>
-        {notifState === 'granted' && <p className="muted-note">Notifications are enabled.</p>}
-        {notifState === 'denied' && (
-          <p className="inline-error">Notifications are blocked in your browser settings.</p>
-        )}
-        {notifState === 'unsupported' && <p className="muted-note">Push isn't supported on this browser.</p>}
-        {(notifState === 'unknown' || notifState === 'denied') && (
-          <button type="button" className="primary-button" onClick={handleEnableNotifications} disabled={enablingNotifs}>
-            {enablingNotifs ? 'Enabling…' : 'Enable notifications'}
-          </button>
-        )}
-        {notifError && <p className="inline-error">{notifError}</p>}
+        <h2>Thông báo</h2>
+        {(() => {
+          const devices = pushStatus?.devices ?? [];
+          const thisDeviceOn = !!thisEndpoint && devices.some((d) => d.endpoint === thisEndpoint);
+          const iosTab = isIOS() && !isStandalone();
+          return (
+            <>
+              {notifState === 'unsupported' && iosTab && (
+                <p className="inline-error">
+                  Trên iPhone/iPad, thông báo chỉ chạy khi cài app vào Màn hình chính: bấm nút Chia sẻ (ô vuông có mũi tên ⬆️) →
+                  <b> Thêm vào MH chính</b>, rồi mở Lazybutts từ màn hình chính và bật thông báo ở đây.
+                </p>
+              )}
+              {notifState === 'unsupported' && !iosTab && <p className="muted-note">Trình duyệt này không hỗ trợ thông báo đẩy.</p>}
+              {notifState !== 'unsupported' && (
+                <p className="muted-note">
+                  Thiết bị này: {thisDeviceOn ? '✅ đã bật' : notifState === 'denied' ? '⛔ bị chặn' : '⚠️ chưa bật'}
+                  {pushStatus ? ` · Tổng ${devices.length} thiết bị đã đăng ký` : ''}
+                </p>
+              )}
+              {notifState === 'denied' && (
+                <p className="inline-error">Thông báo đang bị chặn trong cài đặt trình duyệt — mở cài đặt trang web, cho phép Thông báo rồi bấm lại.</p>
+              )}
+              {notifState !== 'unsupported' && !thisDeviceOn && (
+                <button type="button" className="primary-button" onClick={handleEnableNotifications} disabled={enablingNotifs}>
+                  {enablingNotifs ? 'Đang bật…' : '🔔 Bật thông báo trên thiết bị này'}
+                </button>
+              )}
+              {devices.length > 0 && (
+                <div className="invite-code-row">
+                  <button type="button" className="secondary-button" onClick={handleTestPush} disabled={testing}>
+                    {testing ? 'Đang gửi…' : '📨 Gửi thông báo thử'}
+                  </button>
+                </div>
+              )}
+              {testResult && <p className="muted-note">{testResult}</p>}
+              {notifError && <p className="inline-error">{notifError}</p>}
+            </>
+          );
+        })()}
       </section>
 
       {user.is_admin && (

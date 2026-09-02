@@ -39,6 +39,28 @@ export interface PushApi {
   }): Promise<unknown>;
 }
 
+// Endpoint of this browser's current push subscription, or null when it has
+// none (never subscribed, or the subscription was dropped by the browser).
+export async function currentPushEndpoint(): Promise<string | null> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// iOS Safari only delivers web push to sites installed on the Home Screen
+// (iOS 16.4+); in the plain browser tab PushManager is simply absent.
+export function isIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+export function isStandalone(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+}
+
 // Idempotent: reuses an existing subscription if the browser already has
 // one, otherwise subscribes and tells the server about it. Returns null
 // when push isn't supported at all (no serviceWorker/PushManager).

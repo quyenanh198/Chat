@@ -44,8 +44,8 @@ describe('createPush', () => {
     // Logged exactly once, at construction — not per sendPush call.
     expect(logger.warn).toHaveBeenCalledTimes(1);
 
-    await expect(sendPush([1, 2], { title: 'x', body: 'y', url: '/chat/1' })).resolves.toBeUndefined();
-    await expect(sendPush(1, { title: 'x', body: 'y', url: '/chat/1' })).resolves.toBeUndefined();
+    await expect(sendPush([1, 2], { title: 'x', body: 'y', url: '/chat/1' })).resolves.toEqual(expect.any(Array));
+    await expect(sendPush(1, { title: 'x', body: 'y', url: '/chat/1' })).resolves.toEqual(expect.any(Array));
     expect(querySpy).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe('createPush', () => {
 
     const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() });
 
-    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toEqual(expect.any(Array));
     expect(db.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get(endpoint)).toBeTruthy();
   });
 
@@ -111,7 +111,7 @@ describe('createPush', () => {
     const sendSpy = vi.spyOn(webpush, 'sendNotification');
 
     const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() });
-    await expect(sendPush([42], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+    await expect(sendPush([42], { title: 't', body: 'b', url: '/x' })).resolves.toEqual(expect.any(Array));
 
     expect(sendSpy).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('createPush', () => {
 
     const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() }, 20);
 
-    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toEqual(expect.any(Array));
     // A timeout isn't proof the endpoint is dead (unlike 404/410) — the row
     // is kept, same as any other transient failure.
     expect(db.prepare('SELECT 1 FROM push_subs WHERE endpoint = ?').get(endpoint)).toBeTruthy();
@@ -145,7 +145,7 @@ describe('createPush', () => {
 
     const { sendPush } = createPush(vapidConfig(), db, () => false, { warn: vi.fn() }, 20);
 
-    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toBeUndefined();
+    await expect(sendPush([1], { title: 't', body: 'b', url: '/x' })).resolves.toEqual(expect.any(Array));
   });
 });
 
@@ -267,5 +267,46 @@ describe('POST /api/push/subscribe', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].p256dh).toBe('new-p');
     expect(rows[0].auth).toBe('new-a');
+  });
+});
+
+describe('GET /api/push/status + POST /api/push/test', () => {
+  it('lists my registered devices only', async () => {
+    const app = buildTestApp();
+    const me = await registerAndLogin(app);
+    insertSub(app.db, { userId: me.id, endpoint: 'https://push.example/mine' });
+    insertSub(app.db, { userId: 999, endpoint: 'https://push.example/other' });
+    const res = await app.inject({ method: 'GET', url: '/api/push/status', headers: { cookie: me.cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().enabled).toBe(false); // no VAPID in this app
+    expect(res.json().devices.map((d) => d.endpoint)).toEqual(['https://push.example/mine']);
+  });
+
+  it('test push reports per-device results from the push service', async () => {
+    const app = buildTestApp({
+      VAPID_PUBLIC_KEY: VAPID_KEYS.publicKey,
+      VAPID_PRIVATE_KEY: VAPID_KEYS.privateKey,
+      VAPID_SUBJECT: 'mailto:test@example.com',
+    });
+    const me = await registerAndLogin(app);
+    insertSub(app.db, { userId: me.id, endpoint: 'https://push.example/ok' });
+    insertSub(app.db, { userId: me.id, endpoint: 'https://push.example/gone' });
+    vi.spyOn(webpush, 'sendNotification').mockImplementation(async (sub) => {
+      if (sub.endpoint.endsWith('/gone')) throw Object.assign(new Error('gone'), { statusCode: 410 });
+      return { statusCode: 201 };
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/push/test', headers: { cookie: me.cookie }, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sent).toBe(1);
+    expect(res.json().results.map((r) => r.status).sort()).toEqual([201, 410]);
+    // 410 subscriptions are pruned
+    expect(app.db.prepare('SELECT COUNT(*) c FROM push_subs WHERE user_id = ?').get(me.id).c).toBe(1);
+  });
+
+  it('test push is 404 when vapid is not configured', async () => {
+    const app = buildTestApp();
+    const me = await registerAndLogin(app);
+    const res = await app.inject({ method: 'POST', url: '/api/push/test', headers: { cookie: me.cookie }, payload: {} });
+    expect(res.statusCode).toBe(404);
   });
 });

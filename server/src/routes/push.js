@@ -37,4 +37,35 @@ export async function registerPushRoutes(app) {
 
     return reply.code(201).send({ ok: true });
   });
+
+  // Which devices of mine are registered — the Settings screen compares the
+  // endpoints against this browser's own subscription to say "this device:
+  // on/off" instead of trusting Notification.permission alone.
+  app.get('/push/status', { preHandler: requireUser }, async (request, reply) => {
+    const rows = app.db
+      .prepare('SELECT endpoint, created_at FROM push_subs WHERE user_id = ? ORDER BY created_at')
+      .all(request.user.id);
+    return reply.send({ enabled: Boolean(app.config.vapid), devices: rows });
+  });
+
+  // Self-test: push a notification to every device of the caller and report
+  // what each push service answered (201 = accepted).
+  app.post('/push/test', { preHandler: requireUser }, async (request, reply) => {
+    if (!app.config.vapid) {
+      return reply.code(404).send({ error: 'push_disabled' });
+    }
+    const results = await app.sendPush([request.user.id], {
+      title: '🔔 Thử thông báo Lazybutts',
+      body: 'Thấy dòng này là thông báo hoạt động rồi!',
+      url: '/settings',
+    });
+    return reply.send({
+      sent: results.filter((r) => r.status >= 200 && r.status < 300).length,
+      results: results.map((r) => {
+        let host = '';
+        try { host = new URL(r.endpoint).host; } catch { host = ''; }
+        return { status: r.status, error: r.error, host };
+      }),
+    });
+  });
 }
