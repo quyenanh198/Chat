@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { createDb } from '../src/db.js';
 import { loadConfig } from '../src/config.js';
 import { makeTestDb } from './helpers.js';
@@ -53,6 +54,27 @@ describe('createDb', () => {
 
     createDb(dataDir);
 
+    expect(() => createDb(dataDir)).not.toThrow();
+  });
+
+  it('adds reply_to and edited_at to a messages table created before those columns existed', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'lazybutts-test-'));
+    mkdirSync(join(dataDir, 'db'), { recursive: true });
+    const old = new Database(join(dataDir, 'db', 'lazybutts.sqlite3'));
+    old.exec(
+      `CREATE TABLE messages (
+         id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL, sender_id INTEGER NOT NULL,
+         kind TEXT NOT NULL, body TEXT, media_path TEXT, media_mode TEXT,
+         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)`,
+    );
+    old.close();
+
+    const { db } = createDb(dataDir);
+
+    const cols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
+    expect(cols).toContain('reply_to');
+    expect(cols).toContain('edited_at');
+    // Running the migration again on the now-current table is a no-op.
     expect(() => createDb(dataDir)).not.toThrow();
   });
 });

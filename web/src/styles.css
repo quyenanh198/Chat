@@ -1280,6 +1280,50 @@ a {
   font-weight: 700;
 }
 
+/* ---------- Sửa tin nhắn ---------- */
+
+/* Nút "✏️ Sửa" trong palette chạm (mobile) — chữ nhỏ hơn cỡ emoji. */
+.react-palette .react-edit {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ...và trong thanh hover (desktop): rộng theo chữ thay vì hình tròn. */
+.bubble-actions .bubble-actions-edit {
+  width: auto;
+  padding: 0 0.55rem;
+  border-left: 1px solid var(--border);
+  border-radius: 0 999px 999px 0;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Nhãn "(đã sửa)" nhỏ, mờ, nằm cuối nội dung tin. */
+.bubble-edited {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  font-style: italic;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+/* Thanh "Đang sửa tin nhắn · Huỷ" trên composer (dùng lại .reply-strip). */
+.edit-strip { font-size: 0.8rem; }
+.edit-strip-label { font-weight: 700; }
+.edit-strip-sep { color: var(--text-muted); }
+.edit-strip-cancel {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* ---------- Panel column (desktop) / bottom sheet (mobile) ---------- */
 
 .chat-panel-col { display: contents; }

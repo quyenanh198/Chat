@@ -54,6 +54,8 @@ export interface Message {
   media_mode: 'once' | '24h' | null;
   created_at: number;
   expires_at: number;
+  // ms timestamp of the author's last edit (text messages only); null until then.
+  edited_at?: number | null;
   // Present on media messages (kind image/video) only, computed per the
   // requesting user's view of the once/24h rules.
   viewable?: boolean;
@@ -238,6 +240,10 @@ export function setReaction(conversationId: number, messageId: number, emoji: st
 
 export function sendMessage(conversationId: number, body: string, replyTo?: number): Promise<Message> {
   return api.post(`/api/conversations/${conversationId}/messages`, { body, reply_to: replyTo });
+}
+
+export function editMessage(conversationId: number, messageId: number, text: string): Promise<Message> {
+  return api.patch(`/api/conversations/${conversationId}/messages/${messageId}`, { text });
 }
 
 export function sendMedia(conversationId: number, file: Blob): Promise<Message> {

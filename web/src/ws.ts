@@ -12,6 +12,10 @@ import type { Conversation, Message } from './api';
 
 export type WsEvent =
   | { type: 'message:new'; conversation_id: number; message: Message }
+  // Unlike message:new this goes to every member, the editor included (their
+  // other tabs/devices need it too); `message.reactions` is the neutral shape
+  // without the per-viewer `mine` flag, like reaction:update.
+  | { type: 'message:edited'; conversation_id: number; message: Message }
   | { type: 'story:new'; user_id: number; story_id: number }
   | { type: 'conversation:new'; conversation: Conversation }
   | {

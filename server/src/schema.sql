@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS messages (
   media_mode TEXT CHECK(media_mode IN ('once','24h')),
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
-  reply_to INTEGER
+  reply_to INTEGER,
+  edited_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS media_views (

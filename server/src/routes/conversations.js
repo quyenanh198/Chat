@@ -106,6 +106,23 @@ function reactionsByMessage(db, messageIds, meId) {
   return out;
 }
 
+// Every column a message row carries in API responses (list, send, edit).
+const MESSAGE_COLUMNS = 'id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at, reply_to, edited_at';
+
+// Full API shape for message rows from `meId`'s point of view: media
+// messages (kind image/video) get viewable/viewed computed from the
+// self-destruct rules, text messages are left untouched; everyone gets
+// their reactions (with `mine` for meId) and the reply snippet.
+function serializeMessages(db, rows, meId) {
+  const reactions = reactionsByMessage(db, rows.map((m) => m.id), meId);
+  const replies = replySnippets(db, rows);
+  return rows.map((message) => ({
+    ...(message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, meId) }),
+    reactions: reactions.get(message.id) ?? [],
+    reply: message.reply_to ? replies.get(message.reply_to) ?? null : null,
+  }));
+}
+
 // "@all" and its Vietnamese spellings tag every participant at once. A
 // lookahead instead of \b: JS's \b only knows ASCII word characters, so it
 // never fires after "cả" and "@tất cả" would silently tag nobody.
@@ -238,25 +255,75 @@ export async function registerConversationRoutes(app) {
     const now = Date.now();
     const messages = db
       .prepare(
-        `SELECT id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at, reply_to
+        `SELECT ${MESSAGE_COLUMNS}
          FROM messages
          WHERE conversation_id = ? AND expires_at > ?
          ORDER BY created_at ASC, id ASC`,
       )
       .all(conversationId, now);
 
-    // Media messages (kind image/video) carry viewable/viewed for the
-    // requesting user, computed from the self-destruct rules; text messages
-    // are left untouched.
-    const reactions = reactionsByMessage(db, messages.map((m) => m.id), request.user.id);
-    const replies = replySnippets(db, messages);
-    const withFlags = messages.map((message) => ({
-      ...(message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, request.user.id) }),
-      reactions: reactions.get(message.id) ?? [],
-      reply: message.reply_to ? replies.get(message.reply_to) ?? null : null,
-    }));
+    return reply.send(serializeMessages(db, messages, request.user.id));
+  });
 
-    return reply.send(withFlags);
+  // Edit the text of one of my own messages. Text-only (media messages have
+  // no body to edit), same validation as sending; stamps edited_at so
+  // clients can show "(đã sửa)". Deliberately quiet: no web-push and no
+  // notifyNewMessage — an edit isn't a new message, and re-notifying every
+  // @mention on each typo fix would be noise (mentions aren't stored, they're
+  // only ever used to pick push recipients at send time).
+  app.patch('/conversations/:id/messages/:mid', { preHandler: requireUser }, async (request, reply) => {
+    const db = app.db;
+    const conversationId = Number(request.params.id);
+    const messageId = Number(request.params.mid);
+    if (!Number.isInteger(conversationId) || !Number.isInteger(messageId)) {
+      return reply.code(400).send({ error: 'invalid_id' });
+    }
+    if (!isMember(db, conversationId, request.user.id)) {
+      return reply.code(403).send({ error: 'not_a_member' });
+    }
+
+    const now = Date.now();
+    const message = db
+      .prepare('SELECT id, sender_id, kind FROM messages WHERE id = ? AND conversation_id = ? AND expires_at > ?')
+      .get(messageId, conversationId, now);
+    if (!message) {
+      return reply.code(404).send({ error: 'message_not_found' });
+    }
+    if (message.sender_id !== request.user.id) {
+      return reply.code(403).send({ error: 'not_author' });
+    }
+    if (message.kind !== 'text') {
+      return reply.code(400).send({ error: 'not_editable' });
+    }
+
+    const { text } = request.body ?? {};
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      return reply.code(400).send({ error: 'text_required' });
+    }
+
+    db.prepare('UPDATE messages SET body = ?, edited_at = ? WHERE id = ?').run(text.trim(), now, messageId);
+
+    const row = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(messageId);
+    const [updated] = serializeMessages(db, [row], request.user.id);
+
+    // Everyone in the conversation — the editor included, so their other
+    // open tabs/devices update too. `mine` on reactions is per-viewer, so
+    // the event carries the neutral shape (clients keep their own flags),
+    // same as reaction:update.
+    const memberIds = db
+      .prepare('SELECT user_id FROM participants WHERE conversation_id = ?')
+      .all(conversationId)
+      .map((r) => r.user_id);
+    app.pushToUsers(memberIds, {
+      type: 'message:edited',
+      conversation_id: conversationId,
+      message: {
+        ...updated,
+        reactions: updated.reactions.map(({ emoji, count, names }) => ({ emoji, count, names })),
+      },
+    });
+
+    return reply.send(updated);
   });
 
 
@@ -367,11 +434,7 @@ export async function registerConversationRoutes(app) {
       )
       .run(conversationId, request.user.id, body, now, expiresAt, replyTo);
 
-    const message = db
-      .prepare(
-        'SELECT id, conversation_id, sender_id, kind, body, created_at, expires_at, reply_to FROM messages WHERE id = ?',
-      )
-      .get(info.lastInsertRowid);
+    const message = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(info.lastInsertRowid);
     message.reply = message.reply_to ? replySnippets(db, [message]).get(message.reply_to) ?? null : null;
 
     // Fire-and-forget: notifyNewMessage's WS fan-out is synchronous (already

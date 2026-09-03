@@ -75,6 +75,15 @@ function sendText(app, cookie, conversationId, body) {
   });
 }
 
+function editText(app, cookie, conversationId, messageId, text) {
+  return app.inject({
+    method: 'PATCH',
+    url: `/api/conversations/${conversationId}/messages/${messageId}`,
+    headers: { cookie },
+    payload: { text },
+  });
+}
+
 describe('POST /api/conversations', () => {
   it('creates a 1-1 conversation from a single user_id with no name', async () => {
     const app = buildTestApp();
@@ -454,5 +463,117 @@ describe('POST /api/conversations/:id/messages/:mid/reactions push', () => {
     expect(update.event.message_id).toBe(message.id);
     expect(update.event.message_sender_id).toBe(alice.id);
     expect(update.event.user_id).toBe(bob.id);
+  });
+});
+
+describe('PATCH /api/conversations/:id/messages/:mid', () => {
+  // alice + bob share a 1-1 conversation with one text message from alice;
+  // carol exists but is not a member. WS/push/notify are stubbed AFTER the
+  // initial send so they only ever record what the edit itself does.
+  async function setupWithMessage() {
+    const app = buildTestApp();
+    const { alice, others } = await setupUsers(app, 2);
+    const [bob, carol] = others;
+    const created = await createConversation(app, alice.cookie, { user_ids: [bob.id] });
+    const conversationId = created.json().conversation.id;
+    const message = (await sendText(app, alice.cookie, conversationId, 'chào')).json();
+    const events = [];
+    app.pushToUsers = (userIds, event) => {
+      events.push({ userIds, event });
+    };
+    const pushes = [];
+    app.sendPush = async (userIds, payload) => {
+      pushes.push({ userIds, payload });
+    };
+    const notifies = [];
+    app.notifyNewMessage = async (...args) => {
+      notifies.push(args);
+    };
+    return { app, alice, bob, carol, conversationId, message, events, pushes, notifies };
+  }
+
+  it('lets the author edit: trimmed body, edited_at stamped, message:edited to every member, no push', async () => {
+    const { app, alice, bob, conversationId, message, events, pushes, notifies } = await setupWithMessage();
+    expect(message.edited_at).toBeNull();
+
+    const before = Date.now();
+    const res = await editText(app, alice.cookie, conversationId, message.id, '  chào lại  ');
+
+    expect(res.statusCode).toBe(200);
+    const updated = res.json();
+    expect(updated.id).toBe(message.id);
+    expect(updated.body).toBe('chào lại');
+    expect(updated.sender_id).toBe(alice.id);
+    expect(updated.kind).toBe('text');
+    expect(updated.created_at).toBe(message.created_at);
+    expect(updated.expires_at).toBe(message.expires_at);
+    expect(updated.edited_at).toBeGreaterThanOrEqual(before);
+    expect(updated.reactions).toEqual([]);
+    expect(updated.reply).toBeNull();
+
+    // The list endpoint shows the same edited shape to the other member.
+    const listed = (await getMessages(app, bob.cookie, conversationId)).json();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].body).toBe('chào lại');
+    expect(listed[0].edited_at).toBe(updated.edited_at);
+
+    const edited = events.filter((e) => e.event.type === 'message:edited');
+    expect(edited).toHaveLength(1);
+    expect([...edited[0].userIds].sort()).toEqual([alice.id, bob.id].sort());
+    expect(edited[0].event.conversation_id).toBe(conversationId);
+    expect(edited[0].event.message.id).toBe(message.id);
+    expect(edited[0].event.message.body).toBe('chào lại');
+    expect(edited[0].event.message.edited_at).toBe(updated.edited_at);
+
+    await sleep(0);
+    expect(pushes).toHaveLength(0);
+    expect(notifies).toHaveLength(0);
+  });
+
+  it('returns 403 when someone other than the author edits, leaving the message untouched', async () => {
+    const { app, alice, bob, conversationId, message, events } = await setupWithMessage();
+
+    const res = await editText(app, bob.cookie, conversationId, message.id, 'hack');
+
+    expect(res.statusCode).toBe(403);
+    const listed = (await getMessages(app, alice.cookie, conversationId)).json();
+    expect(listed[0].body).toBe('chào');
+    expect(listed[0].edited_at).toBeNull();
+    expect(events.some((e) => e.event.type === 'message:edited')).toBe(false);
+  });
+
+  it('returns 403 for a non-member', async () => {
+    const { app, carol, conversationId, message } = await setupWithMessage();
+
+    const res = await editText(app, carol.cookie, conversationId, message.id, 'sneaky');
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 400 for empty or missing text', async () => {
+    const { app, alice, conversationId, message } = await setupWithMessage();
+
+    expect((await editText(app, alice.cookie, conversationId, message.id, '   ')).statusCode).toBe(400);
+    expect((await editText(app, alice.cookie, conversationId, message.id, undefined)).statusCode).toBe(400);
+
+    const listed = (await getMessages(app, alice.cookie, conversationId)).json();
+    expect(listed[0].body).toBe('chào');
+    expect(listed[0].edited_at).toBeNull();
+  });
+
+  it('returns 400 for a media message', async () => {
+    const { app, alice, conversationId } = await setupWithMessage();
+    const now = Date.now();
+    const info = app.db
+      .prepare(
+        `INSERT INTO messages (conversation_id, sender_id, kind, media_path, media_mode, created_at, expires_at)
+         VALUES (?, ?, 'image', '/nonexistent/photo.png', '24h', ?, ?)`,
+      )
+      .run(conversationId, alice.id, now, now + DAY_MS);
+
+    const res = await editText(app, alice.cookie, conversationId, Number(info.lastInsertRowid), 'caption');
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('not_editable');
   });
 });

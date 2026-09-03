@@ -13,6 +13,7 @@ import {
   type GifResult,
   getConversations,
   getMessages,
+  editMessage,
   sendMedia,
   sendMessage,
   type Conversation,
@@ -56,6 +57,8 @@ const QUICK_REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 const EMOJI_PANEL = ['😀','😁','😂','🤣','😊','😍','😘','😜','🤔','😴','😭','😱','😡','🥳','🤗','👍','👎','👏','🙏','💪','🔥','✨','🎉','❤️','💔','😅','🙈','🤝','😷','🤯','😇','🥰','😋','🤤','🍜','⚡'];
 const PAGE_GIF_RE = /^https?:\/\/(www\.)?(giphy\.com\/gifs\/|tenor\.com\/view\/)\S+$/i;
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(gif|png|jpe?g|webp)(\?\S*)?$/i;
+// Tin text mà thực chất là GIF/sticker/ảnh link — hiện như ảnh, không cho sửa.
+const isEmbedBody = (body: string): boolean => IMAGE_URL_RE.test(body) || PAGE_GIF_RE.test(body);
 // "@all" và các cách viết tiếng Việt — tag cả nhóm một lần (khớp server).
 const MENTION_ALL = ['all', 'tất cả', 'tat ca', 'mọi người', 'moi nguoi'];
 const MENTION_ALL_LABEL = 'Tất cả';
@@ -106,6 +109,8 @@ export default function Chat() {
   const [gifStatus, setGifStatus] = useState<string | null>(null);
   const [resolvedEmbeds, setResolvedEmbeds] = useState<Record<string, string | null>>({});
   const [replyTarget, setReplyTarget] = useState<{ id: number; name: string; snippet: string } | null>(null);
+  // Đang sửa tin nào: id + nội dung gốc (để bỏ qua khi không đổi gì).
+  const [editing, setEditing] = useState<{ id: number; original: string } | null>(null);
   // Đang gõ "@..." trong ô soạn: query sau dấu @ và vị trí dấu @ trong text.
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -217,12 +222,16 @@ export default function Chat() {
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      // Esc đóng popup @ trước; không có popup thì huỷ sửa tin.
+      if (mention) setMention(null);
+      else if (editing) cancelEdit();
+      return;
+    }
     if (!mention) return;
     if ((event.key === 'Enter' || event.key === 'Tab') && mentionOptions.length > 0) {
       event.preventDefault();
       pickMention(mentionOptions[0].name);
-    } else if (event.key === 'Escape') {
-      setMention(null);
     }
   }
 
@@ -252,11 +261,29 @@ export default function Chat() {
     Promise.all([loadMessages(), loadConversationMeta()]).finally(() => setLoading(false));
   }, [loadMessages, loadConversationMeta]);
 
+  // Thay tin đã sửa vào state (từ phản hồi PATCH hoặc sự kiện WS) và cập
+  // nhật preview ở sidebar nếu đó là tin cuối. Giữ reactions đang có: sự
+  // kiện WS mang bản "trung lập" không có cờ mine.
+  const applyEdited = useCallback((updated: Message) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === updated.id ? { ...m, ...updated, reactions: m.reactions ?? updated.reactions } : m)),
+    );
+    setAllConversations((prev) =>
+      prev.map((c) => {
+        const lm = c.last_message;
+        if (c.id !== updated.conversation_id || !lm || lm.id !== updated.id) return c;
+        return { ...c, last_message: { ...lm, body: updated.body } };
+      }),
+    );
+  }, []);
+
   useEffect(() => {
     const conn: WsConnection = connect();
     const offEvent = conn.onEvent((event) => {
       if (event.type === 'message:new' && event.conversation_id === conversationId) {
         setMessages((prev) => (prev.some((m) => m.id === event.message.id) ? prev : [...prev, event.message]));
+      } else if (event.type === 'message:edited') {
+        applyEdited(event.message);
       }
     });
     // A reconnect may have missed events while the socket was down.
@@ -268,7 +295,15 @@ export default function Chat() {
       offOpen();
       conn.close();
     };
-  }, [conversationId, loadMessages]);
+  }, [conversationId, loadMessages, applyEdited]);
+
+  // Đổi cuộc trò chuyện thì bỏ dở việc sửa/trả lời — id tin thuộc cuộc cũ.
+  useEffect(() => {
+    setEditing(null);
+    setReplyTarget(null);
+    setMention(null);
+    setText('');
+  }, [conversationId]);
 
   // While this is in the future we force-follow the bottom — set on every
   // send so late-loading gifs/stickers can't leave the view stranded above
@@ -372,9 +407,33 @@ export default function Chat() {
 
   function startReply(message: Message) {
     setReactingId(null);
+    if (editing) cancelEdit();
     const name = participantNames.get(message.sender_id) ?? '';
     const snippet = message.kind === 'image' ? '📷 Photo' : message.kind === 'video' ? '🎥 Video' : (message.body ?? '').slice(0, 90);
     setReplyTarget({ id: message.id, name, snippet });
+    composerRef.current?.focus();
+  }
+
+  // Đưa nội dung tin của mình vào ô soạn; Enter/Lưu gọi PATCH, Esc/Huỷ thoát.
+  function startEdit(message: Message) {
+    const original = message.body ?? '';
+    setReactingId(null);
+    setReplyTarget(null);
+    setMention(null);
+    setEditing({ id: message.id, original });
+    setText(original);
+    requestAnimationFrame(() => {
+      const input = composerRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(original.length, original.length);
+    });
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setText('');
+    setMention(null);
     composerRef.current?.focus();
   }
 
@@ -393,6 +452,26 @@ export default function Chat() {
     event.preventDefault();
     const body = text.trim();
     if (!body || sending) return;
+    if (editing) {
+      // Không đổi gì thì chỉ thoát chế độ sửa, khỏi gọi server.
+      if (body === editing.original.trim()) {
+        cancelEdit();
+        return;
+      }
+      setSending(true);
+      try {
+        const updated = await editMessage(conversationId, editing.id, body);
+        applyEdited(updated);
+        setEditing(null);
+        setText('');
+        setMention(null);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Sửa tin nhắn thất bại');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
     setSending(true);
     try {
       followBottomUntil.current = Date.now() + 5000;
@@ -744,6 +823,7 @@ export default function Chat() {
         {messages.map((message) => {
           const isMine = message.sender_id === meId;
           const senderName = participantNames.get(message.sender_id);
+          const canEdit = isMine && message.kind === 'text' && !isEmbedBody(message.body ?? '');
           return (
             <div key={message.id} className={`bubble-row${isMine ? ' bubble-row--mine' : ''}`}>
               {!isMine && (
@@ -762,6 +842,11 @@ export default function Chat() {
                       </button>
                     ))}
                     <button type="button" className="react-reply" onClick={() => startReply(message)}>↩</button>
+                    {canEdit && (
+                      <button type="button" className="react-reply react-edit" onClick={() => startEdit(message)}>
+                        ✏️ Sửa
+                      </button>
+                    )}
                   </div>
                 )}
               <div
@@ -785,7 +870,10 @@ export default function Chat() {
                   ) : PAGE_GIF_RE.test(message.body ?? '') && resolvedEmbeds[message.body!] === undefined ? (
                     <div className="bubble-text bubble-text--loading">Đang tải GIF…</div>
                   ) : (
-                    <div className="bubble-text">{renderBody(message.body ?? '')}</div>
+                    <div className="bubble-text">
+                      {renderBody(message.body ?? '')}
+                      {!!message.edited_at && <span className="bubble-edited">(đã sửa)</span>}
+                    </div>
                   ))}
                 {message.kind !== 'text' &&
                   // The sender can always re-view their own media until it
@@ -857,6 +945,11 @@ export default function Chat() {
                 <button type="button" className="bubble-actions-reply" aria-label="Reply" onClick={() => startReply(message)}>
                   ↩
                 </button>
+                {canEdit && (
+                  <button type="button" className="bubble-actions-edit" aria-label="Sửa tin nhắn" onClick={() => startEdit(message)}>
+                    ✏️ Sửa
+                  </button>
+                )}
               </span>
             </div>
           );
@@ -871,6 +964,13 @@ export default function Chat() {
             <span className="bubble-quote-text">{replyTarget.snippet}</span>
           </div>
           <button type="button" className="icon-button" onClick={() => setReplyTarget(null)} aria-label="Huỷ trả lời">✕</button>
+        </div>
+      )}
+      {editing && (
+        <div className="reply-strip edit-strip">
+          <span className="edit-strip-label">✏️ Đang sửa tin nhắn</span>
+          <span className="edit-strip-sep" aria-hidden="true">·</span>
+          <button type="button" className="edit-strip-cancel" onClick={cancelEdit}>Huỷ</button>
         </div>
       )}
       <form className="composer" onSubmit={handleSendText}>
@@ -946,11 +1046,11 @@ export default function Chat() {
           onKeyDown={handleComposerKeyDown}
           onBlur={() => setTimeout(() => setMention(null), 150)}
           onPaste={handlePaste}
-          placeholder="Message"
+          placeholder={editing ? 'Sửa tin nhắn…' : 'Message'}
           disabled={sending}
         />
         <button type="submit" disabled={sending || text.trim().length === 0}>
-          Send
+          {editing ? 'Lưu' : 'Send'}
         </button>
       </form>
 
