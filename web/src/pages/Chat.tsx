@@ -435,7 +435,13 @@ export default function Chat() {
     const conn: WsConnection = connect();
     const offEvent = conn.onEvent((event) => {
       if (event.type === 'message:new' && event.conversation_id === conversationId) {
-        setMessages((prev) => (prev.some((m) => m.id === event.message.id) ? prev : [...prev, event.message]));
+        // Payload WS phát chung cho mọi thành viên nên không có viewable/viewed
+        // (tính theo từng người xem). Tin vừa tới thì mình chưa xem → xem được;
+        // thiếu mặc định này ảnh nhận trực tiếp hiện "Opened" và không mở được.
+        const incoming = event.message.kind === 'text'
+          ? event.message
+          : { ...event.message, viewable: event.message.viewable ?? true, viewed: event.message.viewed ?? false };
+        setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
       } else if (event.type === 'message:edited') {
         applyEdited(event.message);
       } else if (event.type === 'members:update') {
