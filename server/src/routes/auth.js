@@ -156,7 +156,7 @@ export async function registerAuthRoutes(app) {
       }
 
       const user = db
-        .prepare('SELECT id, username, is_admin, media_mode FROM users WHERE id = ?')
+        .prepare('SELECT id, username, is_admin, media_mode, farm_notify FROM users WHERE id = ?')
         .get(userId);
       return { status: 201, user };
     });

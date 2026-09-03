@@ -377,6 +377,7 @@ describe('GET /api/me', () => {
       username: 'alice',
       is_admin: true,
       media_mode: '24h',
+      farm_notify: true,
       display_name: 'alice',
       avatar_at: null,
     });
@@ -411,6 +412,29 @@ describe('PATCH /api/me/settings', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().user.media_mode).toBe('24h');
+  });
+
+  it('toggles farm_notify off and on', async () => {
+    const app = buildTestApp();
+    const cookie = await registerAdminAndGetCookie(app);
+
+    const off = await app.inject({ method: 'PATCH', url: '/api/me/settings', headers: { cookie }, payload: { farm_notify: false } });
+    expect(off.statusCode).toBe(200);
+    expect(off.json().user.farm_notify).toBe(false);
+    expect(off.json().user.media_mode).toBe('24h'); // untouched
+
+    const me = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } });
+    expect(me.json().farm_notify).toBe(false);
+
+    const on = await app.inject({ method: 'PATCH', url: '/api/me/settings', headers: { cookie }, payload: { farm_notify: true } });
+    expect(on.json().user.farm_notify).toBe(true);
+  });
+
+  it('rejects a non-boolean farm_notify with 400', async () => {
+    const app = buildTestApp();
+    const cookie = await registerAdminAndGetCookie(app);
+    const res = await app.inject({ method: 'PATCH', url: '/api/me/settings', headers: { cookie }, payload: { farm_notify: 'yes' } });
+    expect(res.statusCode).toBe(400);
   });
 
   it('rejects an invalid media_mode with 400', async () => {

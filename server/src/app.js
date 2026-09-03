@@ -162,12 +162,19 @@ export function buildApp({
       if (!Array.isArray(userIds) || userIds.length === 0 || !title) {
         return reply.code(400).send({ error: 'bad_request' });
       }
-      await app.sendPush(userIds.map(Number), {
-        title: String(title),
-        body: String(body ?? ''),
-        url: typeof url === 'string' && url.startsWith('/') ? url : '/farm/',
-      });
-      return reply.send({ ok: true });
+      // Chỉ gửi cho người còn bật "Thông báo game" trong Cài đặt.
+      const ids = userIds.map(Number).filter((n) => Number.isInteger(n));
+      const allowed = ids.length
+        ? app.db.prepare(`SELECT id FROM users WHERE farm_notify = 1 AND id IN (${ids.map(() => '?').join(',')})`).all(...ids).map((r) => r.id)
+        : [];
+      if (allowed.length) {
+        await app.sendPush(allowed, {
+          title: String(title),
+          body: String(body ?? ''),
+          url: typeof url === 'string' && url.startsWith('/') ? url : '/farm/',
+        });
+      }
+      return reply.send({ ok: true, sent: allowed.length, muted: ids.length - allowed.length });
     });
   }
 

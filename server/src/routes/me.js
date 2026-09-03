@@ -37,7 +37,7 @@ export async function registerMeRoutes(app) {
     const now = Date.now();
     app.db.prepare('UPDATE users SET avatar_at = ? WHERE id = ?').run(now, request.user.id);
     const user = app.db
-      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode FROM users WHERE id = ?')
+      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode, farm_notify FROM users WHERE id = ?')
       .get(request.user.id);
     return reply.send({ user: serializeUser(user) });
   });
@@ -55,20 +55,31 @@ export async function registerMeRoutes(app) {
       .prepare('UPDATE users SET display_name = ? WHERE id = ?')
       .run(display_name || null, request.user.id);
     const user = app.db
-      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode FROM users WHERE id = ?')
+      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode, farm_notify FROM users WHERE id = ?')
       .get(request.user.id);
     return reply.send({ user: serializeUser(user) });
   });
 
   app.patch('/me/settings', { preHandler: requireUser }, async (request, reply) => {
-    const { media_mode } = request.body ?? {};
-    if (!VALID_MEDIA_MODES.includes(media_mode)) {
+    const { media_mode, farm_notify } = request.body ?? {};
+    if (media_mode === undefined && farm_notify === undefined) {
       return reply.code(400).send({ error: 'invalid_media_mode' });
     }
+    if (media_mode !== undefined && !VALID_MEDIA_MODES.includes(media_mode)) {
+      return reply.code(400).send({ error: 'invalid_media_mode' });
+    }
+    if (farm_notify !== undefined && typeof farm_notify !== 'boolean') {
+      return reply.code(400).send({ error: 'invalid_farm_notify' });
+    }
 
-    app.db.prepare('UPDATE users SET media_mode = ? WHERE id = ?').run(media_mode, request.user.id);
+    if (media_mode !== undefined) {
+      app.db.prepare('UPDATE users SET media_mode = ? WHERE id = ?').run(media_mode, request.user.id);
+    }
+    if (farm_notify !== undefined) {
+      app.db.prepare('UPDATE users SET farm_notify = ? WHERE id = ?').run(farm_notify ? 1 : 0, request.user.id);
+    }
     const user = app.db
-      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode FROM users WHERE id = ?')
+      .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode, farm_notify FROM users WHERE id = ?')
       .get(request.user.id);
 
     return reply.send({ user: serializeUser(user) });

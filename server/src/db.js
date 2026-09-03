@@ -27,6 +27,10 @@ export function createDb(dataDir) {
   if (!userCols.includes('display_name')) {
     db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
   }
+  // Thông báo game (farm) tách riêng, bật/tắt trong Cài đặt — mặc định bật.
+  if (!userCols.includes('farm_notify')) {
+    db.exec('ALTER TABLE users ADD COLUMN farm_notify INTEGER NOT NULL DEFAULT 1');
+  }
   if (!userCols.includes('avatar_at')) {
     db.exec('ALTER TABLE users ADD COLUMN avatar_at INTEGER');
   }

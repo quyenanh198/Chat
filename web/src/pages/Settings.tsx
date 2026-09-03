@@ -15,6 +15,8 @@ export default function Settings() {
 
   const [modeError, setModeError] = useState<string | null>(null);
   const [savingMode, setSavingMode] = useState(false);
+  const [savingFarm, setSavingFarm] = useState(false);
+  const [farmError, setFarmError] = useState<string | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -75,6 +77,23 @@ export default function Settings() {
       setModeError(err instanceof ApiError ? err.message : 'Failed to update setting');
     } finally {
       setSavingMode(false);
+    }
+  }
+
+  async function handleFarmNotify(on: boolean) {
+    if (!user || on === (user.farm_notify ?? true) || savingFarm) return;
+    const previous = user.farm_notify ?? true;
+    setFarmError(null);
+    setUser({ ...user, farm_notify: on }); // optimistic
+    setSavingFarm(true);
+    try {
+      const { user: updated } = await updateSettings({ farm_notify: on });
+      setUser(updated);
+    } catch (err) {
+      setUser({ ...user, farm_notify: previous });
+      setFarmError(err instanceof ApiError ? err.message : 'Không lưu được, thử lại.');
+    } finally {
+      setSavingFarm(false);
     }
   }
 
@@ -296,6 +315,32 @@ export default function Settings() {
             </>
           );
         })()}
+      </section>
+
+      <section className="settings-section">
+        <h2>🌾 Thông báo game</h2>
+        <p className="muted-note">
+          Thông báo từ <b>Ăn trộm dzui dzẻ</b> (bị trộm, thu mua, xổ số, bảng trộm…) tách riêng với tin nhắn. Tắt ở đây thì vẫn nhận thông báo chat bình thường.
+        </p>
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={`mode-option${(user.farm_notify ?? true) ? ' mode-option--active' : ''}`}
+            onClick={() => handleFarmNotify(true)}
+            disabled={savingFarm}
+          >
+            🔔 Bật
+          </button>
+          <button
+            type="button"
+            className={`mode-option${!(user.farm_notify ?? true) ? ' mode-option--active' : ''}`}
+            onClick={() => handleFarmNotify(false)}
+            disabled={savingFarm}
+          >
+            🔕 Tắt
+          </button>
+        </div>
+        {farmError && <p className="inline-error">{farmError}</p>}
       </section>
 
       {user.is_admin && (

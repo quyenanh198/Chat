@@ -16,6 +16,7 @@ export interface User {
   avatar_at?: number | null;
   is_admin: boolean;
   media_mode: 'once' | '24h';
+  farm_notify?: boolean;
 }
 
 export interface Participant {
@@ -181,8 +182,9 @@ export function getMe(): Promise<User> {
   return api.get('/api/me');
 }
 
-export function updateSettings(media_mode: User['media_mode']): Promise<{ user: User }> {
-  return api.patch('/api/me/settings', { media_mode });
+export type SettingsPatch = Partial<Pick<User, 'media_mode' | 'farm_notify'>>;
+export function updateSettings(patch: User['media_mode'] | SettingsPatch): Promise<{ user: User }> {
+  return api.patch('/api/me/settings', typeof patch === 'string' ? { media_mode: patch } : patch);
 }
 
 export function getUsers(): Promise<Participant[]> {
