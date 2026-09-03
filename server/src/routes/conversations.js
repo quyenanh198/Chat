@@ -21,6 +21,32 @@ function isMember(db, conversationId, userId) {
   );
 }
 
+// Ids of everyone currently in a conversation (WS fan-out lists).
+function getMemberIds(db, conversationId) {
+  return db
+    .prepare('SELECT user_id FROM participants WHERE conversation_id = ?')
+    .all(conversationId)
+    .map((r) => r.user_id);
+}
+
+// The members panel's roster: getParticipants' columns plus when each
+// joined, oldest member first.
+function getMembers(db, conversationId) {
+  return db
+    .prepare(
+      `SELECT u.id, u.username, u.display_name, u.avatar_at, p.joined_at FROM participants p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.conversation_id = ?
+       ORDER BY p.joined_at, u.id`,
+    )
+    .all(conversationId);
+}
+
+// How a user is named in system lines ("X đã thêm Y vào nhóm").
+function displayName(user) {
+  return user?.display_name || user?.username || 'Ai đó';
+}
+
 // Most recent non-expired message in the conversation, meta-only: media
 // messages never carry their body/file here, just enough to render a
 // preview line ("📷 Photo" etc. is a frontend concern).
@@ -50,6 +76,9 @@ function serializeConversation(db, conversation, now) {
     id: conversation.id,
     is_group: Boolean(conversation.is_group),
     name: conversation.name,
+    // Who opened it — may remove members from a group. null for
+    // conversations created before the column existed (see db.js).
+    created_by: conversation.created_by ?? null,
     created_at: conversation.created_at,
     participants: getParticipants(db, conversation.id),
     last_message: getLastMessage(db, conversation.id, now),
@@ -109,18 +138,50 @@ function reactionsByMessage(db, messageIds, meId) {
 // Every column a message row carries in API responses (list, send, edit).
 const MESSAGE_COLUMNS = 'id, conversation_id, sender_id, kind, body, media_mode, created_at, expires_at, reply_to, edited_at';
 
+// {senderId -> display name} for every distinct sender in `rows`. Sent as
+// `sender_name` so a client can still label a message whose author has
+// since left the group — the conversation's participants no longer list
+// them, which is otherwise all the client has to go on.
+function senderNames(db, rows) {
+  const ids = [...new Set(rows.map((m) => m.sender_id))];
+  if (ids.length === 0) return new Map();
+  const placeholders = ids.map(() => '?').join(',');
+  const users = db.prepare(`SELECT id, username, display_name FROM users WHERE id IN (${placeholders})`).all(...ids);
+  return new Map(users.map((u) => [u.id, displayName(u)]));
+}
+
 // Full API shape for message rows from `meId`'s point of view: media
 // messages (kind image/video) get viewable/viewed computed from the
 // self-destruct rules, text messages are left untouched; everyone gets
-// their reactions (with `mine` for meId) and the reply snippet.
+// their sender_name, reactions (with `mine` for meId) and the reply snippet.
 function serializeMessages(db, rows, meId) {
   const reactions = reactionsByMessage(db, rows.map((m) => m.id), meId);
   const replies = replySnippets(db, rows);
+  const names = senderNames(db, rows);
   return rows.map((message) => ({
     ...(message.kind === 'text' ? message : { ...message, ...mediaFlags(db, message, meId) }),
+    sender_name: names.get(message.sender_id) ?? null,
     reactions: reactions.get(message.id) ?? [],
     reply: message.reply_to ? replies.get(message.reply_to) ?? null : null,
   }));
+}
+
+// Inserts a text message from `sender` ({id, username, display_name}) and
+// returns it in the shape POST .../messages replies with (sender_name and
+// reply snippet filled in, no reactions yet). Shared by the send route and
+// the system lines the members routes post.
+function insertTextMessage(db, conversationId, sender, body, replyTo, now) {
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, sender_id, kind, body, created_at, expires_at, reply_to)
+       VALUES (?, ?, 'text', ?, ?, ?, ?)`,
+    )
+    .run(conversationId, sender.id, body, now, now + TEXT_TTL_MS, replyTo);
+
+  const message = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(info.lastInsertRowid);
+  message.sender_name = displayName(sender);
+  message.reply = message.reply_to ? replySnippets(db, [message]).get(message.reply_to) ?? null : null;
+  return message;
 }
 
 // "@all" and its Vietnamese spellings tag every participant at once. A
@@ -196,8 +257,8 @@ export async function registerConversationRoutes(app) {
     const memberIds = [request.user.id, ...otherIds];
     const createTx = db.transaction(() => {
       const info = db
-        .prepare('INSERT INTO conversations (is_group, name, created_at) VALUES (?, ?, ?)')
-        .run(isGroup ? 1 : 0, isGroup ? name : null, now);
+        .prepare('INSERT INTO conversations (is_group, name, created_by, created_at) VALUES (?, ?, ?, ?)')
+        .run(isGroup ? 1 : 0, isGroup ? name : null, request.user.id, now);
       const conversationId = info.lastInsertRowid;
 
       const insertParticipant = db.prepare(
@@ -310,11 +371,7 @@ export async function registerConversationRoutes(app) {
     // open tabs/devices update too. `mine` on reactions is per-viewer, so
     // the event carries the neutral shape (clients keep their own flags),
     // same as reaction:update.
-    const memberIds = db
-      .prepare('SELECT user_id FROM participants WHERE conversation_id = ?')
-      .all(conversationId)
-      .map((r) => r.user_id);
-    app.pushToUsers(memberIds, {
+    app.pushToUsers(getMemberIds(db, conversationId), {
       type: 'message:edited',
       conversation_id: conversationId,
       message: {
@@ -361,12 +418,8 @@ export async function registerConversationRoutes(app) {
     }
 
     const summary = reactionsByMessage(db, [messageId], request.user.id).get(messageId) ?? [];
-    const memberIds = db
-      .prepare('SELECT user_id FROM participants WHERE conversation_id = ?')
-      .all(conversationId)
-      .map((r) => r.user_id);
     // `mine` is per-viewer — send the neutral shape, clients recompute their own flag.
-    app.pushToUsers(memberIds, {
+    app.pushToUsers(getMemberIds(db, conversationId), {
       type: 'reaction:update',
       conversation_id: conversationId,
       message_id: messageId,
@@ -425,17 +478,7 @@ export async function registerConversationRoutes(app) {
       replyAuthorId = target.sender_id;
     }
 
-    const now = Date.now();
-    const expiresAt = now + TEXT_TTL_MS;
-    const info = db
-      .prepare(
-        `INSERT INTO messages (conversation_id, sender_id, kind, body, created_at, expires_at, reply_to)
-         VALUES (?, ?, 'text', ?, ?, ?, ?)`,
-      )
-      .run(conversationId, request.user.id, body, now, expiresAt, replyTo);
-
-    const message = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(info.lastInsertRowid);
-    message.reply = message.reply_to ? replySnippets(db, [message]).get(message.reply_to) ?? null : null;
+    const message = insertTextMessage(db, conversationId, request.user, body, replyTo, Date.now());
 
     // Fire-and-forget: notifyNewMessage's WS fan-out is synchronous (already
     // done by the time this call returns), but its web-push fan-out is a
@@ -451,5 +494,141 @@ export async function registerConversationRoutes(app) {
     });
 
     return reply.code(201).send(message);
+  });
+
+  // ---- Group membership -------------------------------------------------
+  //
+  // Only a group (is_group = 1) has a mutable roster; a 1-1 chat's two
+  // members are what make it that chat. Every route below is member-only.
+
+  // Shared guard: the conversation must exist (404), the caller must be in
+  // it (403 not_a_member — checked before the group test so a stranger
+  // learns nothing about a 1-1 chat either), and it must be a group (400
+  // not_a_group). Returns the conversation row, or null after having sent
+  // the error reply itself.
+  function requireGroupMember(request, reply) {
+    const db = app.db;
+    const conversationId = Number(request.params.id);
+    if (!Number.isInteger(conversationId)) {
+      reply.code(400).send({ error: 'invalid_conversation_id' });
+      return null;
+    }
+    const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId);
+    if (!conversation) {
+      reply.code(404).send({ error: 'conversation_not_found' });
+      return null;
+    }
+    if (!isMember(db, conversationId, request.user.id)) {
+      reply.code(403).send({ error: 'not_a_member' });
+      return null;
+    }
+    if (!conversation.is_group) {
+      reply.code(400).send({ error: 'not_a_group' });
+      return null;
+    }
+    return conversation;
+  }
+
+  // After a roster change: `members:update` (the new roster) to every
+  // current member plus `alsoTo` — the user who just left or was removed,
+  // whose client drops the chat on seeing itself missing from `members`.
+  // Then the system line goes out like any other new message (message:new
+  // to the other members, web-push to their phones — for a newcomer that
+  // push is how the group first shows up on their phone).
+  function announceRoster(request, conversation, action, userId, message, alsoTo = []) {
+    const members = getMembers(app.db, conversation.id);
+    app.pushToUsers([...members.map((m) => m.id), ...alsoTo], {
+      type: 'members:update',
+      conversation_id: conversation.id,
+      action,
+      user_id: userId,
+      actor_id: request.user.id,
+      members,
+    });
+    app.notifyNewMessage(conversation.id, message).catch((err) => {
+      request.log.error({ err }, 'notifyNewMessage failed');
+    });
+    return members;
+  }
+
+  app.get('/conversations/:id/members', { preHandler: requireUser }, async (request, reply) => {
+    const conversation = requireGroupMember(request, reply);
+    if (!conversation) return reply;
+    return reply.send(getMembers(app.db, conversation.id));
+  });
+
+  // Any member may add any existing user. The newcomer also gets the
+  // conversation:new the creation path would have sent them — Home lists
+  // the group off that exactly as it does a brand-new one.
+  app.post('/conversations/:id/members', { preHandler: requireUser }, async (request, reply) => {
+    const db = app.db;
+    const conversation = requireGroupMember(request, reply);
+    if (!conversation) return reply;
+
+    const targetId = Number(request.body?.userId);
+    if (!Number.isInteger(targetId)) {
+      return reply.code(400).send({ error: 'invalid_user_id' });
+    }
+    const target = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(targetId);
+    if (!target) {
+      return reply.code(404).send({ error: 'user_not_found' });
+    }
+    if (isMember(db, conversation.id, targetId)) {
+      return reply.code(400).send({ error: 'already_member' });
+    }
+
+    const now = Date.now();
+    const body = `➕ ${displayName(request.user)} đã thêm ${displayName(target)} vào nhóm`;
+    const message = db.transaction(() => {
+      db.prepare('INSERT INTO participants (conversation_id, user_id, joined_at) VALUES (?, ?, ?)').run(
+        conversation.id,
+        targetId,
+        now,
+      );
+      return insertTextMessage(db, conversation.id, request.user, body, null, now);
+    })();
+
+    app.pushToUsers([targetId], { type: 'conversation:new', conversation: serializeConversation(db, conversation, now) });
+    const members = announceRoster(request, conversation, 'add', targetId, message);
+
+    return reply.code(201).send({ ok: true, members, message });
+  });
+
+  // Removing yourself is leaving (anyone may; the last one out leaves an
+  // empty conversation behind that nobody lists and whose messages expire
+  // on their own). Removing someone else takes the group's creator or an
+  // app admin.
+  app.delete('/conversations/:id/members/:userId', { preHandler: requireUser }, async (request, reply) => {
+    const db = app.db;
+    const conversation = requireGroupMember(request, reply);
+    if (!conversation) return reply;
+
+    const targetId = Number(request.params.userId);
+    if (!Number.isInteger(targetId)) {
+      return reply.code(400).send({ error: 'invalid_user_id' });
+    }
+    const leaving = targetId === request.user.id;
+    if (!leaving && !request.user.is_admin && conversation.created_by !== request.user.id) {
+      return reply.code(403).send({ error: 'not_allowed' });
+    }
+    const target = leaving
+      ? request.user
+      : db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(targetId);
+    if (!target || !isMember(db, conversation.id, targetId)) {
+      return reply.code(404).send({ error: 'member_not_found' });
+    }
+
+    const now = Date.now();
+    const body = leaving
+      ? `🚪 ${displayName(request.user)} đã rời nhóm`
+      : `➖ ${displayName(request.user)} đã xoá ${displayName(target)} khỏi nhóm`;
+    const message = db.transaction(() => {
+      db.prepare('DELETE FROM participants WHERE conversation_id = ? AND user_id = ?').run(conversation.id, targetId);
+      return insertTextMessage(db, conversation.id, request.user, body, null, now);
+    })();
+
+    const members = announceRoster(request, conversation, leaving ? 'leave' : 'remove', targetId, message, [targetId]);
+
+    return reply.send({ ok: true, members, message });
   });
 }

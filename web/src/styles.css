@@ -1638,3 +1638,106 @@ a {
 }
 .push-nudge span { flex: 1 1 200px; }
 .push-nudge-btn { padding: 0.45rem 0.9rem; border-radius: 999px; text-decoration: none; font-weight: 600; }
+
+/* ---------- Thành viên nhóm ---------- */
+
+/* Nút "👥 N" trên header: viên thuốc (có số) thay vì hình tròn. */
+.members-btn {
+  width: auto;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 10px;
+}
+
+.member-row:hover { background: var(--bg-hover); }
+
+.member-avatar {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--avatar);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.member-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.member-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* "✕" xoá khỏi nhóm (chỉ người tạo nhóm / admin thấy). */
+.member-remove {
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
+.member-leave {
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.member-add {
+  align-self: center;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.member-leave:disabled,
+.member-add:disabled,
+.members-modal .primary-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

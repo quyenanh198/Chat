@@ -37,6 +37,12 @@ export function createDb(dataDir) {
   if (!msgCols.includes('edited_at')) {
     db.exec('ALTER TABLE messages ADD COLUMN edited_at INTEGER');
   }
+  // Groups created before this column existed keep NULL: only an admin can
+  // remove members from those (see the members routes in conversations.js).
+  const convCols = db.prepare('PRAGMA table_info(conversations)').all().map((c) => c.name);
+  if (!convCols.includes('created_by')) {
+    db.exec('ALTER TABLE conversations ADD COLUMN created_by INTEGER');
+  }
 
   return { db, mediaDir };
 }

@@ -37,6 +37,9 @@ export interface Conversation {
   id: number;
   is_group: boolean;
   name: string | null;
+  // Who opened it; may remove members from a group (so may an admin). null
+  // for conversations from before the server tracked this.
+  created_by?: number | null;
   created_at: number;
   participants: Participant[];
   last_message: LastMessage | null;
@@ -54,6 +57,9 @@ export interface Message {
   media_mode: 'once' | '24h' | null;
   created_at: number;
   expires_at: number;
+  // Author's name as of the fetch — the fallback for labelling a message
+  // from someone who has since left the group (no longer a participant).
+  sender_name?: string | null;
   // ms timestamp of the author's last edit (text messages only); null until then.
   edited_at?: number | null;
   // Present on media messages (kind image/video) only, computed per the
@@ -193,6 +199,34 @@ export function createConversation(user_ids: number[], name?: string): Promise<{
 
 export function getMessages(conversationId: number): Promise<Message[]> {
   return api.get(`/api/conversations/${conversationId}/messages`);
+}
+
+// A group member as GET /conversations/:id/members lists them.
+export interface Member extends Participant {
+  joined_at: number;
+}
+
+export function getMembers(conversationId: number): Promise<Member[]> {
+  return api.get(`/api/conversations/${conversationId}/members`);
+}
+
+// Both reply with the new roster plus the system line posted about the
+// change ("➕ A đã thêm B vào nhóm") — as the actor you don't get that line
+// over WS (message:new skips its sender), so append it from here.
+export interface MembersChange {
+  ok: boolean;
+  members: Member[];
+  message: Message;
+}
+
+export function addMember(conversationId: number, userId: number): Promise<MembersChange> {
+  return api.post(`/api/conversations/${conversationId}/members`, { userId });
+}
+
+// Removing yourself leaves the group; removing someone else takes the
+// group's creator or an admin (403 not_allowed otherwise).
+export function removeMember(conversationId: number, userId: number): Promise<MembersChange> {
+  return api.del(`/api/conversations/${conversationId}/members/${userId}`);
 }
 
 export interface Reaction {

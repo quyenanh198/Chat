@@ -73,6 +73,17 @@ function nextMessage(socket) {
   });
 }
 
+// Resolves with the first `count` parsed events the socket receives.
+function collectMessages(socket, count) {
+  return new Promise((resolve) => {
+    const got = [];
+    socket.on('message', (data) => {
+      got.push(JSON.parse(data.toString()));
+      if (got.length === count) resolve(got);
+    });
+  });
+}
+
 async function postStoryUpload(app, cookie) {
   const form = new FormData();
   form.set('file', new Blob([Buffer.alloc(16, 1)], { type: 'image/png' }), 'story.png');
@@ -244,6 +255,78 @@ describe('GET /ws', () => {
     expect(dedupeRes.statusCode).toBe(200);
     await sleep(50);
     expect(gotSecondEvent).toBe(false);
+  });
+
+  it('delivers members:update to every group member including the one just removed', async () => {
+    const app = await trackedRunningApp();
+    const { alice, others } = await setupUsers(app, 2);
+    const [bob, carol] = others;
+
+    const convRes = await app.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie: alice.cookie },
+      payload: { user_ids: [bob.id, carol.id], name: 'Group' },
+    });
+    const conversationId = convRes.json().conversation.id;
+
+    const bobSocket = await trackedConnect(app, bob.cookie);
+    const carolSocket = await trackedConnect(app, carol.cookie);
+    const bobEvent = nextMessage(bobSocket);
+    const carolEvent = nextMessage(carolSocket);
+
+    // alice created the group, so she may remove carol.
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/conversations/${conversationId}/members/${carol.id}`,
+      headers: { cookie: alice.cookie },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const [bobGot, carolGot] = await Promise.all([bobEvent, carolEvent]);
+    for (const event of [bobGot, carolGot]) {
+      expect(event.type).toBe('members:update');
+      expect(event.conversation_id).toBe(conversationId);
+      expect(event.action).toBe('remove');
+      expect(event.user_id).toBe(carol.id);
+      expect(event.actor_id).toBe(alice.id);
+      expect(event.members.map((m) => m.id).sort((a, b) => a - b)).toEqual([alice.id, bob.id].sort((a, b) => a - b));
+    }
+  });
+
+  it('brings a user added to a group up to speed: members:update, conversation:new and the system line', async () => {
+    const app = await trackedRunningApp();
+    const { alice, others } = await setupUsers(app, 3);
+    const [bob, carol, dave] = others;
+
+    const convRes = await app.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie: alice.cookie },
+      payload: { user_ids: [bob.id, carol.id], name: 'Group' },
+    });
+    const conversationId = convRes.json().conversation.id;
+
+    const daveSocket = await trackedConnect(app, dave.cookie);
+    const daveEvents = collectMessages(daveSocket, 3);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/conversations/${conversationId}/members`,
+      headers: { cookie: bob.cookie },
+      payload: { userId: dave.id },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const events = await daveEvents;
+    expect(events.map((e) => e.type).sort()).toEqual(['conversation:new', 'members:update', 'message:new']);
+    const roster = events.find((e) => e.type === 'members:update');
+    expect(roster.members.map((m) => m.id)).toContain(dave.id);
+    const fresh = events.find((e) => e.type === 'conversation:new');
+    expect(fresh.conversation.id).toBe(conversationId);
+    const line = events.find((e) => e.type === 'message:new');
+    expect(line.conversation_id).toBe(conversationId);
+    expect(line.message.body).toBe('➕ bob đã thêm dave vào nhóm');
   });
 
   it('broadcasts story:new to every other connected user but not back to the poster', async () => {

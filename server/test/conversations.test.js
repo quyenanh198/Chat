@@ -130,6 +130,7 @@ describe('POST /api/conversations', () => {
     const { conversation } = res.json();
     expect(conversation.is_group).toBe(true);
     expect(conversation.name).toBe('Family');
+    expect(conversation.created_by).toBe(alice.id);
     expect(conversation.participants).toHaveLength(3);
   });
 

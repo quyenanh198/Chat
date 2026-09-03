@@ -2,9 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ApiError,
+  addMember,
   avatarUrl,
   deleteSticker,
+  getMembers,
+  getUsers,
   listStickers,
+  removeMember,
   uploadSticker,
   type CustomSticker,
   searchGifs,
@@ -18,10 +22,11 @@ import {
   sendMessage,
   type Conversation,
   type Message,
+  type Participant,
 } from '../api';
 import { useAuth } from '../AuthContext';
 import { fetchMediaBlobUrl } from '../mediaBlob';
-import { connect, type WsConnection } from '../ws';
+import { connect, type WsConnection, type WsEvent } from '../ws';
 
 interface MediaViewerState {
   message: Message;
@@ -277,6 +282,155 @@ export default function Chat() {
     );
   }, []);
 
+  // ---- Thành viên nhóm ----
+  const [showMembers, setShowMembers] = useState(false);
+  const [memberMode, setMemberMode] = useState<'list' | 'add'>('list');
+  const [members, setMembers] = useState<Participant[]>([]);
+  const [allUsers, setAllUsers] = useState<Participant[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  // Xoá người khác: người tạo nhóm hoặc admin (server kiểm tra lại, 403 not_allowed).
+  const canRemoveOthers = !!user?.is_admin || (conversation?.created_by != null && conversation.created_by === meId);
+  const candidates = useMemo(
+    () => allUsers.filter((u) => !members.some((m) => m.id === u.id)),
+    [allUsers, members],
+  );
+  // Tên nhóm cho hộp xác nhận/thông báo — ref để handler WS bên dưới không
+  // phải phụ thuộc vào `conversation` (đỡ mở lại socket mỗi lần meta đổi).
+  const groupNameRef = useRef('nhóm');
+  groupNameRef.current = conversation?.name ?? 'nhóm';
+
+  // Danh sách mới (từ phản hồi API hoặc sự kiện WS) thay vào cả panel lẫn
+  // participants của cuộc trò chuyện (tên/avatar trong bong bóng, @mention,
+  // số "👥 N" trên header).
+  const applyMembers = useCallback((list: Participant[]) => {
+    setMembers(list);
+    setConversation((prev) => (prev ? { ...prev, participants: list } : prev));
+    setAllConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, participants: list } : c)));
+  }, [conversationId]);
+
+  // Dòng hệ thống ("➕ A đã thêm B vào nhóm") trả về cùng phản hồi — mình là
+  // người gửi nên WS không đưa lại, tự chèn như tin vừa gửi.
+  const appendMessage = useCallback((message: Message) => {
+    setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+  }, []);
+
+  // Ai đó được thêm / rời / bị xoá. Không còn tên mình trong `members` nghĩa
+  // là mình vừa ra khỏi nhóm: bỏ nhóm khỏi sidebar và (nếu đang mở) về Home.
+  const handleMembersUpdate = useCallback((event: Extract<WsEvent, { type: 'members:update' }>) => {
+    const stillIn = event.members.some((m) => m.id === meId);
+    if (!stillIn) {
+      setAllConversations((prev) => prev.filter((c) => c.id !== event.conversation_id));
+      if (event.conversation_id === conversationId) {
+        const notice = event.action === 'leave'
+          ? `Bạn đã rời nhóm "${groupNameRef.current}"`
+          : `Bạn đã bị xoá khỏi nhóm "${groupNameRef.current}"`;
+        navigate('/', { replace: true, state: { notice } });
+      }
+      return;
+    }
+    if (event.conversation_id === conversationId) {
+      applyMembers(event.members);
+    } else {
+      setAllConversations((prev) =>
+        prev.map((c) => (c.id === event.conversation_id ? { ...c, participants: event.members } : c)),
+      );
+    }
+  }, [conversationId, meId, applyMembers, navigate]);
+
+  function memberErrorText(err: unknown): string {
+    const code = err instanceof ApiError ? err.message : '';
+    switch (code) {
+      case 'not_allowed': return 'Chỉ người tạo nhóm hoặc admin mới xoá được thành viên.';
+      case 'already_member': return 'Người này đã ở trong nhóm.';
+      case 'user_not_found': return 'Không tìm thấy người dùng này.';
+      case 'member_not_found': return 'Người này không còn trong nhóm.';
+      case 'not_a_member': return 'Bạn không còn trong nhóm này.';
+      default: return 'Không thực hiện được, thử lại sau.';
+    }
+  }
+
+  async function openMembers() {
+    setShowMembers(true);
+    setMemberMode('list');
+    setMemberError(null);
+    // Hiện ngay danh sách đang có, rồi làm mới từ server.
+    setMembers(conversation?.participants ?? []);
+    try {
+      applyMembers(await getMembers(conversationId));
+    } catch (err) {
+      setMemberError(memberErrorText(err));
+    }
+  }
+
+  function closeMembers() {
+    setShowMembers(false);
+    setMemberError(null);
+  }
+
+  async function openAddMember() {
+    setMemberMode('add');
+    setMemberError(null);
+    setUsersLoading(true);
+    try {
+      setAllUsers(await getUsers());
+    } catch (err) {
+      setMemberError(memberErrorText(err));
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function handleAddMember(candidate: Participant) {
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      const { members: list, message } = await addMember(conversationId, candidate.id);
+      applyMembers(list);
+      appendMessage(message);
+      setMemberMode('list');
+      showNotice(`Đã thêm ${candidate.display_name || candidate.username} vào nhóm`);
+    } catch (err) {
+      setMemberError(memberErrorText(err));
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function handleRemoveMember(member: Participant) {
+    const name = member.display_name || member.username;
+    if (!window.confirm(`Xoá ${name} khỏi nhóm "${groupNameRef.current}"?`)) return;
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      const { members: list, message } = await removeMember(conversationId, member.id);
+      applyMembers(list);
+      appendMessage(message);
+      showNotice(`Đã xoá ${name} khỏi nhóm`);
+    } catch (err) {
+      setMemberError(memberErrorText(err));
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function handleLeave() {
+    const name = groupNameRef.current;
+    if (!window.confirm(`Rời nhóm "${name}"? Bạn sẽ không nhận tin nhắn của nhóm này nữa.`)) return;
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      await removeMember(conversationId, meId);
+      setShowMembers(false);
+      setAllConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      navigate('/', { replace: true, state: { notice: `Bạn đã rời nhóm "${name}"` } });
+    } catch (err) {
+      setMemberError(memberErrorText(err));
+      setMemberBusy(false);
+    }
+  }
+
   useEffect(() => {
     const conn: WsConnection = connect();
     const offEvent = conn.onEvent((event) => {
@@ -284,6 +438,12 @@ export default function Chat() {
         setMessages((prev) => (prev.some((m) => m.id === event.message.id) ? prev : [...prev, event.message]));
       } else if (event.type === 'message:edited') {
         applyEdited(event.message);
+      } else if (event.type === 'members:update') {
+        handleMembersUpdate(event);
+      } else if (event.type === 'conversation:new') {
+        // Vừa được thêm vào một nhóm khác (hoặc ai đó mở chat mới với mình):
+        // làm mới sidebar.
+        loadConversationMeta();
       }
     });
     // A reconnect may have missed events while the socket was down.
@@ -295,7 +455,7 @@ export default function Chat() {
       offOpen();
       conn.close();
     };
-  }, [conversationId, loadMessages, applyEdited]);
+  }, [conversationId, loadMessages, loadConversationMeta, applyEdited, handleMembersUpdate]);
 
   // Đổi cuộc trò chuyện thì bỏ dở việc sửa/trả lời — id tin thuộc cuộc cũ.
   useEffect(() => {
@@ -782,6 +942,17 @@ export default function Chat() {
           })()}
         </span>
         <h1>{title}</h1>
+        {conversation?.is_group && (
+          <button
+            type="button"
+            className="icon-button members-btn"
+            onClick={openMembers}
+            aria-label="Thành viên nhóm"
+            title="Thành viên nhóm"
+          >
+            👥 {conversation.participants.length}
+          </button>
+        )}
         <a
           className="icon-button farm-link"
           href="/farm/"
@@ -822,7 +993,9 @@ export default function Chat() {
         )}
         {messages.map((message) => {
           const isMine = message.sender_id === meId;
-          const senderName = participantNames.get(message.sender_id);
+          // Người đã rời nhóm không còn trong participants — dùng tên server
+          // gắn kèm tin để bong bóng cũ của họ vẫn có tên.
+          const senderName = participantNames.get(message.sender_id) ?? message.sender_name ?? undefined;
           const canEdit = isMine && message.kind === 'text' && !isEmbedBody(message.body ?? '');
           return (
             <div key={message.id} className={`bubble-row${isMine ? ' bubble-row--mine' : ''}`}>
@@ -1054,6 +1227,105 @@ export default function Chat() {
         </button>
       </form>
 
+      {showMembers && (
+        <div className="modal-overlay" onClick={closeMembers}>
+          <div className="modal members-modal" onClick={(event) => event.stopPropagation()}>
+            {memberMode === 'list' ? (
+              <>
+                <h2>👥 Thành viên · {members.length}</h2>
+                <ul className="member-list">
+                  {members.map((m) => {
+                    const name = m.display_name || m.username;
+                    const isMe = m.id === meId;
+                    const avatar = avatarUrl(m.id, m.avatar_at);
+                    return (
+                      <li key={m.id} className="member-row">
+                        <span className="member-avatar">
+                          {avatar ? <img className="avatar-img" src={avatar} alt="" /> : name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="member-body">
+                          <span className="member-name">
+                            {name}
+                            {isMe && <span className="member-hint"> (bạn)</span>}
+                          </span>
+                          {conversation?.created_by === m.id && <span className="member-hint">Người tạo nhóm</span>}
+                        </span>
+                        {isMe ? (
+                          <button type="button" className="member-leave" onClick={handleLeave} disabled={memberBusy}>
+                            Rời nhóm
+                          </button>
+                        ) : canRemoveOthers && (
+                          <button
+                            type="button"
+                            className="icon-button member-remove"
+                            onClick={() => handleRemoveMember(m)}
+                            disabled={memberBusy}
+                            aria-label={`Xoá ${name} khỏi nhóm`}
+                            title="Xoá khỏi nhóm"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {memberError && <p className="auth-error">{memberError}</p>}
+                <div className="modal-actions">
+                  <button type="button" className="secondary-button" onClick={closeMembers}>
+                    Đóng
+                  </button>
+                  <button type="button" className="primary-button" onClick={openAddMember} disabled={memberBusy}>
+                    ＋ Thêm
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2>Thêm thành viên</h2>
+                {usersLoading && <p className="muted-note">Đang tải…</p>}
+                {!usersLoading && candidates.length === 0 && (
+                  <p className="muted-note">Mọi người đều đã ở trong nhóm rồi.</p>
+                )}
+                <ul className="member-list">
+                  {candidates.map((u) => {
+                    const name = u.display_name || u.username;
+                    const avatar = avatarUrl(u.id, u.avatar_at);
+                    return (
+                      <li key={u.id} className="member-row">
+                        <span className="member-avatar">
+                          {avatar ? <img className="avatar-img" src={avatar} alt="" /> : name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="member-body">
+                          <span className="member-name">{name}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="primary-button member-add"
+                          onClick={() => handleAddMember(u)}
+                          disabled={memberBusy}
+                        >
+                          Thêm
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {memberError && <p className="auth-error">{memberError}</p>}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => { setMemberMode('list'); setMemberError(null); }}
+                  >
+                    ← Quay lại
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {viewer && (
         <div className="media-viewer-overlay" onClick={closeViewer}>
           <button type="button" className="media-viewer-close" onClick={closeViewer} aria-label="Close">

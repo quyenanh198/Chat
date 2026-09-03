@@ -8,10 +8,22 @@
 // — each explicitly excludes the actor). Whatever a page does itself (send a
 // message, create a conversation, post a story) must update local state from
 // that request's own response; WS is strictly for hearing about the rest.
-import type { Conversation, Message } from './api';
+import type { Conversation, Member, Message } from './api';
 
 export type WsEvent =
   | { type: 'message:new'; conversation_id: number; message: Message }
+  // A group's roster changed. Goes to every current member AND the user who
+  // just left / was removed (`user_id`) — not finding yourself in `members`
+  // is how a client learns it's out. The matching system line follows as a
+  // normal message:new.
+  | {
+      type: 'members:update';
+      conversation_id: number;
+      action: 'add' | 'leave' | 'remove';
+      user_id: number;
+      actor_id: number;
+      members: Member[];
+    }
   // Unlike message:new this goes to every member, the editor included (their
   // other tabs/devices need it too); `message.reactions` is the neutral shape
   // without the per-viewer `mine` flag, like reaction:update.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ApiError,
   avatarUrl,
@@ -42,7 +42,19 @@ function initialLetter(name: string): string {
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const meId = user?.id ?? -1;
+
+  // Lời nhắn từ trang vừa rời (vd. Chat đưa về đây sau khi mình rời / bị xoá
+  // khỏi nhóm) — tự ẩn sau vài giây.
+  const [notice, setNotice] = useState<string | null>(
+    () => (location.state as { notice?: string | null } | null)?.notice ?? null,
+  );
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
@@ -88,7 +100,9 @@ export default function Home() {
   useEffect(() => {
     const conn: WsConnection = connect();
     const offEvent = conn.onEvent((event) => {
-      if (event.type === 'conversation:new' || event.type === 'message:new') {
+      // members:update: được thêm vào nhóm (nhóm xuất hiện) hoặc rời/bị xoá
+      // (nhóm biến mất) — server chỉ liệt kê nhóm mình còn ở trong.
+      if (event.type === 'conversation:new' || event.type === 'message:new' || event.type === 'members:update') {
         loadConversations();
       }
       if (event.type === 'story:new') {
@@ -311,6 +325,12 @@ export default function Home() {
       <button type="button" className="fab" onClick={openModal} aria-label="New chat">
         +
       </button>
+
+      {notice && (
+        <div className="toast" onClick={() => setNotice(null)}>
+          {notice}
+        </div>
+      )}
 
       {modalOpen && (
         <div className="modal-overlay" onClick={() => setModalOpen(false)}>

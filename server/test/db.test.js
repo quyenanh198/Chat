@@ -77,6 +77,28 @@ describe('createDb', () => {
     // Running the migration again on the now-current table is a no-op.
     expect(() => createDb(dataDir)).not.toThrow();
   });
+
+  it('adds created_by to a conversations table created before that column existed', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'lazybutts-test-'));
+    mkdirSync(join(dataDir, 'db'), { recursive: true });
+    const old = new Database(join(dataDir, 'db', 'lazybutts.sqlite3'));
+    old.exec(
+      `CREATE TABLE conversations (
+         id INTEGER PRIMARY KEY, is_group INTEGER NOT NULL DEFAULT 0, name TEXT,
+         created_at INTEGER NOT NULL)`,
+    );
+    old.prepare('INSERT INTO conversations (is_group, name, created_at) VALUES (1, ?, ?)').run('Nhà cũ', Date.now());
+    old.close();
+
+    const { db } = createDb(dataDir);
+
+    const cols = db.prepare('PRAGMA table_info(conversations)').all().map((c) => c.name);
+    expect(cols).toContain('created_by');
+    // A group from before the column has no known creator: NULL, so only an
+    // admin may remove members from it.
+    expect(db.prepare('SELECT created_by FROM conversations').get().created_by).toBeNull();
+    expect(() => createDb(dataDir)).not.toThrow();
+  });
 });
 
 describe('users table', () => {

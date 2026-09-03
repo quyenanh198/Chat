@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY,
   is_group INTEGER NOT NULL DEFAULT 0,
   name TEXT,
+  created_by INTEGER,
   created_at INTEGER NOT NULL
 );
 
