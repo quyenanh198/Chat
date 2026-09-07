@@ -910,6 +910,16 @@ export default function Chat() {
           >
             🧱
           </a>
+          <a
+            className="icon-button noto-link"
+            href="/noto/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Noto — ghi chú"
+            title="Noto — ghi chú"
+          >
+            📝
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -988,6 +998,16 @@ export default function Chat() {
           title="Xếp Gạch"
         >
           🧱
+        </a>
+        <a
+          className="icon-button noto-link"
+          href="/noto/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Noto — ghi chú"
+          title="Noto — ghi chú"
+        >
+          📝
         </a>
       </header>
 
