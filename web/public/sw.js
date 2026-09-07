@@ -28,11 +28,11 @@ self.addEventListener('activate', (event) => {
 // this worker is not a general-purpose asset cache.
 self.addEventListener('fetch', (event) => {
   if (event.request.mode !== 'navigate') return;
-  // /farm/*, /mahjong/*, /blockpuzzle/* and /noto/* are sibling apps served by their own services
+  // /farm/*, /mahjong/* and /blockpuzzle/* are sibling games served by their own services
   // behind the same host (each with its own service worker) — let them hit
   // the network untouched (and never overwrite the cached chat shell).
   const { pathname } = new URL(event.request.url);
-  if (pathname.startsWith('/farm') || pathname.startsWith('/mahjong') || pathname.startsWith('/blockpuzzle') || pathname.startsWith('/noto')) return;
+  if (pathname.startsWith('/farm') || pathname.startsWith('/mahjong') || pathname.startsWith('/blockpuzzle')) return;
 
   event.respondWith(
     fetch(event.request)

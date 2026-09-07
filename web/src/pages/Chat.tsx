@@ -912,7 +912,7 @@ export default function Chat() {
           </a>
           <a
             className="icon-button noto-link"
-            href="/noto/"
+            href="https://noto.lazybutts.com/"
             target="_blank"
             rel="noreferrer"
             aria-label="Noto — ghi chú"
@@ -1001,7 +1001,7 @@ export default function Chat() {
         </a>
         <a
           className="icon-button noto-link"
-          href="/noto/"
+          href="https://noto.lazybutts.com/"
           target="_blank"
           rel="noreferrer"
           aria-label="Noto — ghi chú"
