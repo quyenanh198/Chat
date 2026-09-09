@@ -910,16 +910,6 @@ export default function Chat() {
           >
             🧱
           </a>
-          <a
-            className="icon-button noto-link"
-            href="https://noto.lazybutts.com/"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Noto — ghi chú"
-            title="Noto — ghi chú"
-          >
-            📝
-          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -998,16 +988,6 @@ export default function Chat() {
           title="Xếp Gạch"
         >
           🧱
-        </a>
-        <a
-          className="icon-button noto-link"
-          href="https://noto.lazybutts.com/"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Noto — ghi chú"
-          title="Noto — ghi chú"
-        >
-          📝
         </a>
       </header>
 
@@ -1248,8 +1228,9 @@ export default function Chat() {
           placeholder={editing ? 'Sửa tin nhắn…' : 'Message'}
           disabled={sending}
         />
-        <button type="submit" disabled={sending || text.trim().length === 0}>
-          {editing ? 'Lưu' : 'Send'}
+        <button type="submit" className="composer-send" disabled={sending || text.trim().length === 0} aria-label={editing ? 'Lưu' : 'Send'}>
+          <span className="composer-send-label">{editing ? 'Lưu' : 'Send'}</span>
+          <span className="composer-send-icon" aria-hidden="true">{editing ? '✓' : '➤'}</span>
         </button>
       </form>
 

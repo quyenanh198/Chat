@@ -1529,16 +1529,16 @@ a {
   box-shadow: 0 1px 4px rgba(90, 166, 58, 0.4);
 }
 .farm-link:hover { filter: brightness(1.05); }
-.mahjong-link, .blockpuzzle-link, .noto-link {
+.mahjong-link, .blockpuzzle-link {
   text-decoration: none;
   background: linear-gradient(135deg, #fdf3dc 0%, #f2cf8e 100%);
   border-radius: 50%;
   box-shadow: 0 1px 4px rgba(190, 140, 50, 0.4);
 }
-.mahjong-link:hover, .blockpuzzle-link:hover, .noto-link:hover { filter: brightness(1.05); }
+.mahjong-link:hover, .blockpuzzle-link:hover { filter: brightness(1.05); }
 .chat-sidebar-head .farm-link { margin-left: auto; }
 .chat-header .farm-link { margin-left: auto; flex-shrink: 0; }
-.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .noto-link { flex-shrink: 0; }
+.chat-header .mahjong-link, .chat-header .blockpuzzle-link { flex-shrink: 0; }
 .chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }
@@ -1740,4 +1740,33 @@ a {
 .members-modal .primary-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* ---- Mobile: chống tự phóng to ----
+   iOS Safari tự zoom cả trang khi focus vào ô nhập có chữ nhỏ hơn 16px và
+   không zoom về sau đó (trang "bị to" — lỗi size). Ô nhập trên màn cảm ứng
+   luôn ≥ 16px; bấm nhanh hai lần vào nút không còn kích hoạt double-tap zoom. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: max(16px, 1em); }
+}
+html, body, button, a, .icon-button, .conversation-row, .message-bubble, .composer { touch-action: manipulation; }
+
+/* ---- Composer trên màn hẹp ----
+   Trước đây ô nhập giữ bề rộng mặc định (~210px) nên hàng soạn tin rộng 490px
+   trên màn 375px; .chat-page (overflow hidden) bị cuộn ngang khi focus ô nhập →
+   cả trang lệch trái, nút bị cắt (lỗi "size" trên điện thoại). Ô nhập giờ co
+   được, nút gửi thành mũi tên tròn, ẩn nút @ (gõ @ trực tiếp vẫn gợi ý). */
+.composer-input { min-width: 0; }
+.composer .icon-button { flex: 0 0 auto; }
+.composer-send { flex: 0 0 auto; white-space: nowrap; }
+.composer-send-icon { display: none; }
+.message-bubble { overflow-wrap: anywhere; }
+.chat-page > * { max-width: 100%; }
+@media (max-width: 480px) {
+  .composer { gap: 0.3rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+  .composer .icon-button { width: 2rem; height: 2rem; font-size: 0.95rem; }
+  .composer .mention-btn { display: none; }
+  .composer-send { width: 2.25rem; height: 2.25rem; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+  .composer-send-label { display: none; }
+  .composer-send-icon { display: inline; font-size: 1rem; line-height: 1; }
 }
