@@ -910,6 +910,16 @@ export default function Chat() {
           >
             🧱
           </a>
+          <a
+            className="icon-button gunny-link"
+            href="/gunny/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Gunny"
+            title="Gunny"
+          >
+            🎯
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -988,6 +998,16 @@ export default function Chat() {
           title="Xếp Gạch"
         >
           🧱
+        </a>
+        <a
+          className="icon-button gunny-link"
+          href="/gunny/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Gunny"
+          title="Gunny"
+        >
+          🎯
         </a>
       </header>
 

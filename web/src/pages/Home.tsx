@@ -254,6 +254,16 @@ export default function Home() {
           >
             🧱
           </a>
+          <a
+            className="icon-button gunny-link"
+            href="/gunny/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Gunny"
+            title="Gunny"
+          >
+            🎯
+          </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️
           </Link>

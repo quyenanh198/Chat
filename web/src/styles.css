@@ -1536,9 +1536,17 @@ a {
   box-shadow: 0 1px 4px rgba(190, 140, 50, 0.4);
 }
 .mahjong-link:hover, .blockpuzzle-link:hover { filter: brightness(1.05); }
+/* Gunny bắn nhau: chip đỏ cam cho khác hẳn hai game kia. */
+.gunny-link {
+  text-decoration: none;
+  background: linear-gradient(135deg, #ffd9c2 0%, #f2784b 100%);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(190, 80, 40, 0.4);
+}
+.gunny-link:hover { filter: brightness(1.05); }
 .chat-sidebar-head .farm-link { margin-left: auto; }
 .chat-header .farm-link { margin-left: auto; flex-shrink: 0; }
-.chat-header .mahjong-link, .chat-header .blockpuzzle-link { flex-shrink: 0; }
+.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .gunny-link { flex-shrink: 0; }
 .chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }
