@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS invites (
   created_at INTEGER NOT NULL
 );
 
+-- Mã khôi phục mật khẩu: quyenanh198 tạo cho ĐÚNG MỘT tài khoản, dùng một lần, hết hạn
+-- sau 24 giờ. Tách khỏi bảng invites có chủ đích: mã mời đăng ký đưa cho người mới
+-- mà cũng mở được mật khẩu của bất kỳ ai thì thành chìa khoá vạn năng.
+CREATE TABLE IF NOT EXISTS password_resets (
+  code TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY,
   is_group INTEGER NOT NULL DEFAULT 0,

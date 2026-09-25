@@ -38,6 +38,8 @@ export function loadConfig(env = process.env) {
   // service: enables POST /internal/farm/notify so the farm can web-push
   // its players through this app. Absent = that route isn't registered.
   const farmInternalSecret = env.FARM_INTERNAL_SECRET || null;
+  // Người duy nhất phát được mã khôi phục mật khẩu (theo username).
+  const passwordResetIssuer = env.PASSWORD_RESET_ISSUER || 'quyenanh198';
 
-  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, giphyKey, farmInternalSecret };
+  return { port, dataDir, sessionSecret, vapid, maxUploadBytes, bootstrapInvite, giphyKey, farmInternalSecret, passwordResetIssuer };
 }

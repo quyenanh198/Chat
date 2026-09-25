@@ -34,6 +34,11 @@ export function createDb(dataDir) {
   if (!userCols.includes('avatar_at')) {
     db.exec('ALTER TABLE users ADD COLUMN avatar_at INTEGER');
   }
+  // Giây (cùng đơn vị với `iat` của JWT). Phiên cấp trước mốc này bị từ chối — đặt lại mật
+  // khẩu vì bị lộ mà phiên cũ của người kia vẫn sống 30 ngày thì đặt lại cũng bằng không.
+  if (!userCols.includes('password_changed_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN password_changed_at INTEGER');
+  }
   const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
   if (!msgCols.includes('reply_to')) {
     db.exec('ALTER TABLE messages ADD COLUMN reply_to INTEGER');

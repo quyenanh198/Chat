@@ -6,6 +6,7 @@ import {
   clearSessionCookie,
   serializeUser,
 } from '../auth.js';
+import { normalizeResetCode } from './password-resets.js';
 
 // Thrown from inside the register transaction when the conditional invite
 // UPDATE affects 0 rows — i.e. the code was already consumed by the time we
@@ -199,6 +200,53 @@ export async function registerAuthRoutes(app) {
     setSessionCookie(reply, token);
 
     return reply.send({ user: serializeUser(user) });
+  });
+
+  // Quên mật khẩu: cần mã khôi phục do quyenanh198 phát cho đúng tài khoản này.
+  // Mọi kiểu sai (không có người, sai mã, mã của người khác, hết hạn, đã dùng) đều trả
+  // chung một lỗi — không để ai dò xem username nào tồn tại hay mã nào từng hợp lệ.
+  app.post('/auth/reset-password', { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
+    const { username, code, password } = request.body ?? {};
+    if (!username || !code || !password) {
+      return reply.code(400).send({ error: 'username_code_and_password_required' });
+    }
+    if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({ error: 'password_too_short' });
+    }
+
+    const db = app.db;
+    const normalized = normalizeResetCode(code);
+    const now = Date.now();
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const row = user
+      ? db.prepare('SELECT used_at, expires_at FROM password_resets WHERE code = ? AND user_id = ?').get(normalized, user.id)
+      : null;
+    // Kiểm tra rẻ trước khi băm argon2 (cố ý chậm), như ở register.
+    if (!row || row.used_at || row.expires_at < now) {
+      return reply.code(403).send({ error: 'invalid_reset' });
+    }
+
+    const passHash = await hashPassword(password);
+    // Giây, cùng đơn vị với `iat` của JWT: phiên cấp trước mốc này bị requireUser từ chối.
+    const changedAt = Math.floor(Date.now() / 1000);
+    const resetTx = db.transaction(() => {
+      // Cập nhật có điều kiện: hai request dùng cùng một mã cùng lúc thì chỉ một cái thắng.
+      const consumed = db
+        .prepare('UPDATE password_resets SET used_at = ? WHERE code = ? AND user_id = ? AND used_at IS NULL AND expires_at >= ?')
+        .run(Date.now(), normalized, user.id, now);
+      if (consumed.changes === 0) return false;
+      db.prepare('UPDATE users SET pass_hash = ?, password_changed_at = ? WHERE id = ?').run(passHash, changedAt, user.id);
+      return true;
+    });
+    if (!resetTx()) {
+      return reply.code(403).send({ error: 'invalid_reset' });
+    }
+
+    // Đăng nhập luôn bằng mật khẩu mới — mọi phiên khác của tài khoản này đã bị thu hồi.
+    const fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    const token = await signSession(fresh.id, app.config.sessionSecret);
+    setSessionCookie(reply, token);
+    return reply.send({ user: serializeUser(fresh) });
   });
 
   app.post('/auth/logout', async (request, reply) => {

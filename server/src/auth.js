@@ -84,9 +84,13 @@ export async function requireUser(request, reply) {
 
   const userId = Number(payload.sub);
   const user = request.server.db
-    .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode, farm_notify FROM users WHERE id = ?')
+    .prepare('SELECT id, username, display_name, avatar_at, is_admin, media_mode, farm_notify, password_changed_at FROM users WHERE id = ?')
     .get(userId);
   if (!user) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  // Phiên cấp trước lần đặt lại mật khẩu gần nhất: không còn hiệu lực.
+  if (user.password_changed_at && Number(payload.iat) < user.password_changed_at) {
     return reply.code(401).send({ error: 'unauthorized' });
   }
 

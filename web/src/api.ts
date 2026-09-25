@@ -331,3 +331,12 @@ export function sendPushTest(): Promise<PushTestResult> {
 export function createInvite(): Promise<{ code: string }> {
   return api.post('/api/invites');
 }
+
+/** Chỉ quyenanh198 gọi được: mã khôi phục cho đúng một tài khoản, dùng một lần, sống 24 giờ. */
+export function createPasswordReset(userId: number): Promise<{ code: string; username: string; expiresAt: number }> {
+  return api.post('/api/password-resets', { userId });
+}
+
+export function resetPassword(username: string, code: string, password: string): Promise<{ user: User }> {
+  return api.post('/api/auth/reset-password', { username, code, password });
+}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as api from '../api';
 import { avatarUrl, uploadAvatar } from '../api';
 import AvatarEditor from '../components/AvatarEditor';
-import { ApiError, createInvite, logout, updateSettings, type User } from '../api';
+import { ApiError, createInvite, createPasswordReset, getUsers, logout, updateSettings, type Participant, type User } from '../api';
 import { useAuth } from '../AuthContext';
 import { currentPushEndpoint, ensurePushSubscription, isIOS, isStandalone } from '../sw-register';
 
@@ -46,6 +46,21 @@ export default function Settings() {
   }
 
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const [resetUsers, setResetUsers] = useState<Participant[]>([]);
+  const [resetTarget, setResetTarget] = useState<number | ''>('');
+  const [resetResult, setResetResult] = useState<{ code: string; username: string; expiresAt: number } | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetCopied, setResetCopied] = useState(false);
+
+  // Hook: phải đứng trước `if (!user) return null` bên dưới.
+  // Danh sách người để chọn khi phát mã khôi phục (chỉ admin thấy mục này).
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    getUsers().then(setResetUsers).catch(() => setResetUsers([]));
+  }, [user?.is_admin]);
+
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -168,6 +183,36 @@ export default function Settings() {
     }
     setUser(null);
     navigate('/login', { replace: true });
+  }
+
+  // Mã 10 ký tự đọc qua điện thoại dễ nhầm — hiện thành hai cụm 5.
+  const formatResetCode = (code: string) => `${code.slice(0, 5)}-${code.slice(5)}`;
+
+  async function handleCreateReset() {
+    if (resetTarget === '') return;
+    setResetBusy(true);
+    setResetError(null);
+    setResetCopied(false);
+    try {
+      setResetResult(await createPasswordReset(resetTarget));
+    } catch (err) {
+      const code = err instanceof ApiError ? err.message : '';
+      setResetError(code === 'issuer_required' ? 'Chỉ quyenanh198 mới phát được mã khôi phục.' : code || 'Không tạo được mã.');
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  async function handleCopyReset() {
+    if (!resetResult) return;
+    // Chép sẵn cả lời nhắn để dán thẳng qua Messenger/Zalo cho người quên mật khẩu.
+    const text = `Mã khôi phục mật khẩu Lazybutts cho ${resetResult.username}: ${formatResetCode(resetResult.code)} (dùng một lần, hết hạn sau 24 giờ). Vào ${location.origin}/reset-password để đặt mật khẩu mới.`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setResetCopied(true);
+    } catch {
+      setResetError('Không chép được — chép tay mã ở trên.');
+    }
   }
 
   async function handleGenerateInvite() {
@@ -358,6 +403,50 @@ export default function Settings() {
             </div>
           )}
           {inviteError && <p className="inline-error">{inviteError}</p>}
+        </section>
+      )}
+
+      {user.is_admin && (
+        <section className="settings-section">
+          <h2>Mã khôi phục mật khẩu</h2>
+          <p className="settings-hint">
+            Ai quên mật khẩu thì chọn đúng tài khoản của người đó rồi tạo mã. Mã chỉ mở được tài khoản đã chọn, dùng
+            một lần và hết hạn sau 24 giờ. Tạo mã mới thì mã cũ của người đó hết giá trị.
+          </p>
+          <div className="reset-issue-row">
+            <select
+              value={resetTarget}
+              onChange={(event) => {
+                setResetTarget(event.target.value ? Number(event.target.value) : '');
+                setResetResult(null);
+              }}
+              aria-label="Tài khoản cần khôi phục"
+            >
+              <option value="">Chọn tài khoản…</option>
+              {resetUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name && u.display_name !== u.username ? `${u.display_name} (${u.username})` : u.username}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="primary-button" onClick={handleCreateReset} disabled={resetBusy || resetTarget === ''}>
+              {resetBusy ? 'Đang tạo…' : 'Tạo mã'}
+            </button>
+          </div>
+          {resetResult && (
+            <>
+              <div className="invite-code-row">
+                <code className="invite-code">{formatResetCode(resetResult.code)}</code>
+                <button type="button" className="secondary-button" onClick={handleCopyReset}>
+                  {resetCopied ? 'Đã chép lời nhắn!' : 'Chép lời nhắn'}
+                </button>
+              </div>
+              <p className="settings-hint">
+                Cho <b>{resetResult.username}</b> · hết hạn lúc {new Date(resetResult.expiresAt).toLocaleString('vi-VN')}
+              </p>
+            </>
+          )}
+          {resetError && <p className="inline-error">{resetError}</p>}
         </section>
       )}
 

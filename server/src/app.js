@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerUsersRoutes } from './routes/users.js';
 import { registerInviteRoutes } from './routes/invites.js';
+import { registerPasswordResetRoutes } from './routes/password-resets.js';
 import { registerGifRoutes } from './routes/gif.js';
 import { registerStickerRoutes } from './routes/stickers.js';
 import { registerEmbedRoutes } from './routes/embed.js';
@@ -221,6 +222,7 @@ export function buildApp({
       await registerMeRoutes(api);
       await registerUsersRoutes(api);
       await registerInviteRoutes(api);
+      await registerPasswordResetRoutes(api);
       await registerGifRoutes(api);
       await registerStickerRoutes(api);
       await registerEmbedRoutes(api);

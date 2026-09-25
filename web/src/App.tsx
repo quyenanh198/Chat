@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ResetPassword from './pages/ResetPassword';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import Story from './pages/Story';
@@ -38,6 +39,14 @@ export default function App() {
             element={
               <RedirectIfAuthed>
                 <Login />
+              </RedirectIfAuthed>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <RedirectIfAuthed>
+                <ResetPassword />
               </RedirectIfAuthed>
             }
           />

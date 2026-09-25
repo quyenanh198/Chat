@@ -15,6 +15,7 @@ const ALL_TABLES = [
   'message_reactions',
   'messages',
   'participants',
+  'password_resets',
   'push_subs',
   'stories',
   'story_views',
@@ -38,7 +39,7 @@ describe('createDb', () => {
     expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
   });
 
-  it('creates all 11 tables defined in schema.sql', () => {
+  it('creates all 12 tables defined in schema.sql', () => {
     const { db } = makeTestDb();
 
     const names = db

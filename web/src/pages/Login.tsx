@@ -54,6 +54,9 @@ export default function Login() {
           {submitting ? 'Logging in…' : 'Log in'}
         </button>
         <p className="auth-switch">
+          <Link to="/reset-password">Quên mật khẩu?</Link>
+        </p>
+        <p className="auth-switch">
           No account? <Link to="/register">Register</Link>
         </p>
       </form>
