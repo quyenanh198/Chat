@@ -1544,9 +1544,17 @@ a {
   box-shadow: 0 1px 4px rgba(190, 80, 40, 0.4);
 }
 .gunny-link:hover { filter: brightness(1.05); }
+/* Idle Garden Hero: xanh lá non, tách khỏi màu cỏ đậm của Nông trại. */
+.garden-link {
+  text-decoration: none;
+  background: linear-gradient(135deg, #e6f8d8 0%, #9fd98a 100%);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(80, 150, 70, 0.4);
+}
+.garden-link:hover { filter: brightness(1.05); }
 .chat-sidebar-head .farm-link { margin-left: auto; }
 .chat-header .farm-link { margin-left: auto; flex-shrink: 0; }
-.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .gunny-link { flex-shrink: 0; }
+.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .gunny-link, .chat-header .garden-link { flex-shrink: 0; }
 .chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }

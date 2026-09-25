@@ -264,6 +264,16 @@ export default function Home() {
           >
             🎯
           </a>
+          <a
+            className="icon-button garden-link"
+            href="/garden/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Idle Garden Hero"
+            title="Idle Garden Hero"
+          >
+            🌱
+          </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️
           </Link>

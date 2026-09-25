@@ -920,6 +920,16 @@ export default function Chat() {
           >
             🎯
           </a>
+          <a
+            className="icon-button garden-link"
+            href="/garden/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Idle Garden Hero"
+            title="Idle Garden Hero"
+          >
+            🌱
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -1008,6 +1018,16 @@ export default function Chat() {
           title="Gunny"
         >
           🎯
+        </a>
+        <a
+          className="icon-button garden-link"
+          href="/garden/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Idle Garden Hero"
+          title="Idle Garden Hero"
+        >
+          🌱
         </a>
       </header>
 
