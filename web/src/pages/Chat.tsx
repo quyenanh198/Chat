@@ -930,6 +930,16 @@ export default function Chat() {
           >
             🌱
           </a>
+          <a
+            className="icon-button worms-link"
+            href="/worms/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Worms"
+            title="Worms"
+          >
+            🪱
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -1028,6 +1038,16 @@ export default function Chat() {
           title="Idle Garden Hero"
         >
           🌱
+        </a>
+        <a
+          className="icon-button worms-link"
+          href="/worms/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Worms"
+          title="Worms"
+        >
+          🪱
         </a>
       </header>
 

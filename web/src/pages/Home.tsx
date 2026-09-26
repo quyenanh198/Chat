@@ -274,6 +274,16 @@ export default function Home() {
           >
             🌱
           </a>
+          <a
+            className="icon-button worms-link"
+            href="/worms/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Worms"
+            title="Worms"
+          >
+            🪱
+          </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️
           </Link>
