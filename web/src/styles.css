@@ -1560,9 +1560,17 @@ a {
   box-shadow: 0 1px 4px rgba(170, 70, 100, 0.4);
 }
 .worms-link:hover { filter: brightness(1.05); }
+/* Serpent Siege: tím đêm, như nền màn chơi của game. */
+.serpent-link {
+  text-decoration: none;
+  background: linear-gradient(135deg, #e6dcff 0%, #8f74d6 100%);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(90, 60, 160, 0.4);
+}
+.serpent-link:hover { filter: brightness(1.05); }
 .chat-sidebar-head .farm-link { margin-left: auto; }
 .chat-header .farm-link { margin-left: auto; flex-shrink: 0; }
-.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .gunny-link, .chat-header .garden-link, .chat-header .worms-link { flex-shrink: 0; }
+.chat-header .mahjong-link, .chat-header .blockpuzzle-link, .chat-header .gunny-link, .chat-header .garden-link, .chat-header .worms-link, .chat-header .serpent-link { flex-shrink: 0; }
 .chat-header h1 { flex: 1; }
 .home-header-actions { display: flex; align-items: center; gap: 0.35rem; }
 .home-header-actions .icon-button { text-decoration: none; }

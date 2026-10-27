@@ -940,6 +940,16 @@ export default function Chat() {
           >
             🪱
           </a>
+          <a
+            className="icon-button serpent-link"
+            href="/serpent/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Serpent Siege"
+            title="Serpent Siege"
+          >
+            🐍
+          </a>
         </div>
         <div className="chat-sidebar-list">
           {sidebarRows.map((c) => (
@@ -1048,6 +1058,16 @@ export default function Chat() {
           title="Worms"
         >
           🪱
+        </a>
+        <a
+          className="icon-button serpent-link"
+          href="/serpent/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Serpent Siege"
+          title="Serpent Siege"
+        >
+          🐍
         </a>
       </header>
 

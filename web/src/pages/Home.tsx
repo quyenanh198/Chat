@@ -284,6 +284,16 @@ export default function Home() {
           >
             🪱
           </a>
+          <a
+            className="icon-button serpent-link"
+            href="/serpent/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Serpent Siege"
+            title="Serpent Siege"
+          >
+            🐍
+          </a>
           <Link to="/settings" className="icon-button" aria-label="Settings">
             ⚙️
           </Link>
